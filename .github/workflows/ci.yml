@@ -1,0 +1,42 @@
+# Runs the same gate as the git hooks (scripts/check.sh full): rustfmt, clippy,
+# cargo tests, plus prettier/eslint/tests for site/ and deploy/cdk. Node is
+# required before any cargo build: bencher's build.rs generates the authz crypto
+# fixtures via fixtures/generate.mjs (see bencher/fixtures/README.md).
+#
+# Scope: the Rust workspace and the two npm projects. The Java/Python/Go scenario
+# artifacts and the gradle Smithy codegen are exercised by `bencher build`, which
+# needs the full toolchain set (JDK 25, go, python3.14) and is out of scope here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            site/package-lock.json
+            deploy/cdk/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install npm dependencies
+        run: |
+          npm ci --prefix site
+          npm ci --prefix deploy/cdk
+
+      - name: Check (fmt, lint, clippy, tests)
+        run: ./scripts/check.sh full

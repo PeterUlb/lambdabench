@@ -1,0 +1,652 @@
+/* Component styles for the site: filters, small-multiples layout, and
+   the HTML tables (head-to-head, win-rate, percentile appendix).
+
+   One palette drives the whole site. Our component tokens (below) are the source
+   of truth, and we push the SAME values onto Framework's `--theme-*` variables so
+   the page chrome (sidebar, search, links, headings) matches our cards, tables,
+   and charts. The chart SVGs cannot read CSS variables (Plot renders concrete
+   color attributes), so their matching hexes live in components/theme.js and MUST
+   be kept in sync with the values here. */
+:root {
+  --bg: #0d0e11; /* deep blue-black page background */
+  --panel: #16181d; /* card / block background */
+  --panel2: #1b1e24; /* elevated surface (KPI cards, hover) */
+  --grid: #2a2d35;
+  --frame: #33363f;
+  --text: #e8e9ee;
+  --dim: #9aa0ac;
+  --faint: #6b7280;
+  --accent: #7fb0ff;
+
+  /* Drive Framework's chrome from the same palette. */
+  --theme-background: var(--bg);
+  --theme-background-alt: var(--panel);
+  --theme-foreground: var(--text);
+  --theme-foreground-alt: var(--text);
+  --theme-foreground-muted: var(--dim);
+  --theme-foreground-faint: var(--faint);
+  --theme-foreground-fainter: var(--grid);
+  --theme-foreground-faintest: var(--grid);
+  --theme-foreground-focus: var(--accent);
+}
+
+/* The signature backdrop: a soft radial glow in the top-right over the deep
+   blue-black, fixed so it does not scroll. This is what gives the page depth
+   instead of reading as a flat fill (the old render.mjs page used this). */
+html {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, #1a1d24 0%, var(--bg) 55%) fixed,
+    var(--bg);
+}
+
+/* ---- KPI cards ---- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+  margin: 8px 0 28px;
+}
+.kpi {
+  background: linear-gradient(160deg, var(--panel2), var(--panel));
+  border: 1px solid var(--grid);
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.kpi .v {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+/* Long single-token values (e.g. region ids) that must not wrap mid-token. */
+.kpi .v.sm {
+  font-size: 24px;
+  white-space: nowrap;
+}
+.kpi .k {
+  font-size: 12px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: 4px;
+}
+.kpi .s {
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 6px;
+}
+
+/* ---- Scenario reference (collapsed by default) ---- */
+.scenarios > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 0;
+  list-style: none;
+  user-select: none;
+}
+.scenarios > summary::-webkit-details-marker {
+  display: none;
+}
+.scenarios > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--faint);
+  transition: transform 0.12s ease;
+}
+.scenarios[open] > summary::before {
+  transform: rotate(90deg);
+}
+.scenarios > summary:hover {
+  color: var(--accent);
+}
+.scenarios-intro {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--dim);
+  margin: 6px 0 12px;
+  max-width: 70ch;
+}
+.scenarios dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px 28px;
+  margin: 0;
+}
+.scenarios .row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scenarios dt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.scenarios dd {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+.scenarios dd .why {
+  color: var(--faint);
+}
+
+/* ---- Filter form (sticky so it stays in reach while scrolling charts) ---- */
+.filters {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  background: rgba(13, 14, 17, 0.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--grid);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin: 0 0 22px;
+}
+.flt-grp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flt-lbl {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.flt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.flt-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.flt-chk input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---- Small multiples / responsive charts ---- */
+/* Three layouts share the .sm-panel/.sm-title scaffold, all width-driven by a
+   ResizeObserver in charts.js (no fixed pixel widths anywhere):
+   - .sm-grid: the FLUID metric panels (cold/warm/footprint/tail/cost/CPU). Each
+     panel's width is set to fill the column; panels shrink to fit and wrap, so a
+     grid never exceeds the container. Blocks stay overflow:visible (below) so a
+     leftmost-point tooltip is not clipped.
+   - .pg-grid: the A/B dumbbell + jitter panels. Same flex layout, but panels are
+     FLOORED at a minimum width (row labels are fixed text and cannot compress),
+     so on a screen narrower than one panel the block scrolls horizontally
+     in-column instead of squashing the labels or overflowing the page.
+   - .rp-wrap: a single wide plot (cold breakdown, artifact size, distribution,
+     opt/snap dumbbells). The SVG is rendered at a width clamped to the container
+     down to a floor, then scrolls in-column below the floor.
+   `align-items: flex-start` keeps a partial last row left-aligned, not stretched. */
+.sm-grid,
+.pg-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.sm-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.sm-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 4px;
+  line-height: 1.25;
+  min-height: 2.5em;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+/* Optional one-line subtitle under .sm-title, e.g. on the jitter A/B panels.
+   Empty string yields an empty box (no margin), so panels without a subtitle
+   align with ones that have it. */
+.sm-subtitle {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--dim);
+  text-align: center;
+  line-height: 1.3;
+  margin-bottom: 6px;
+  max-width: 100%;
+}
+.sm-subtitle:empty {
+  margin-bottom: 0;
+}
+.sm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 0 12px 2px;
+}
+.sm-legend .lg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.lg-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.sm-empty {
+  color: var(--dim);
+  font-size: 13px;
+  font-style: italic;
+  padding: 24px 4px;
+}
+
+/* Interactive Plot tips on small-multiple panels are often WIDER than the
+   narrow (~250px) panel they belong to, so a tip on a leftmost data point
+   (e.g. 128MB) extends left of the panel. Three layers would otherwise hide it,
+   each fixed here:
+
+   1. The Plot `<svg>` itself computes `overflow: hidden`, slicing the tip at the
+      panel edge. Allow it to overflow.
+   2. The `.observablehq--block { overflow-x: auto }` scroll container below
+      (needed so the wide 1180px charts/tables scroll in-column) re-clips it.
+      Scope an override to small-multiple blocks only, via :has, so the wide
+      charts keep their scroll.
+   3. Once nothing clips, the tip on a leftmost point paints UNDER the fixed
+      sidebar: the sidebar is a root-level stacking context at `z-index: 3`,
+      while `#observablehq-main` is `z-index: 0`. Raising a panel's own z-index
+      does nothing here (it only reorders panels WITHIN main); the column itself
+      must outrank the sidebar. Lift main above the sidebar only while a panel is
+      hovered, so the tip stays on top. */
+.sm-panel svg {
+  overflow: visible;
+}
+/* Only the FLUID metric grid opts out of the block scroll (its panels always fit
+   the container, so overflow here is only ever a tooltip). The floored .pg-grid
+   and single-plot .rp-wrap keep the default overflow-x:auto so they scroll
+   in-column when their content is wider than a narrow screen. */
+.observablehq--block:has(.sm-grid) {
+  overflow: visible;
+}
+#observablehq-main:has(.sm-panel:hover) {
+  z-index: 4;
+}
+
+/* ---- Wide-content scroll container ---- */
+/* The percentile / head-to-head tables and the fixed-width Plot charts can be
+   wider than the content column (which Framework caps and which reserves a
+   192px right gutter for the page TOC). Without this, a wide table overflows
+   and slides UNDER the "Contents" sidebar. Scoping overflow here keeps wide
+   content scrollable inside its own column instead. */
+.tbl-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+/* Plot renders a fixed-width SVG; rather than scale it (which would distort the
+   aspect ratio, since only the width attribute would change), let the display
+   block scroll horizontally so wide charts stay at native size and in-column. */
+.observablehq--block {
+  overflow-x: auto;
+}
+
+/* ---- Tables (shared) ---- */
+table.summary {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+  margin-top: 4px;
+}
+table.summary th,
+table.summary td {
+  text-align: right;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--grid);
+}
+table.summary th:first-child,
+table.summary td:first-child {
+  text-align: left;
+}
+table.summary thead th {
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+table.summary td.dim,
+table.summary .dim {
+  color: var(--faint);
+}
+table.summary .hot {
+  font-weight: 700;
+}
+table.summary .tail {
+  color: var(--faint);
+  font-weight: 400;
+  font-size: 12px;
+}
+table.summary .tail.win {
+  color: var(--text);
+  font-weight: 500;
+}
+table.summary thead th .th-sub,
+table.winrate thead th .th-sub {
+  color: var(--faint);
+  font-weight: 400;
+  font-size: 10.5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+table.summary tbody tr:hover {
+  background: var(--panel2);
+}
+table.summary tr.memB td {
+  background: rgba(255, 255, 255, 0.018);
+}
+table.summary tr.block-top td {
+  border-top: 2px solid var(--frame);
+}
+table.summary td.memcol {
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Percentile appendix tables */
+table.summary.pctl {
+  font-size: 12.5px;
+}
+table.summary.pctl th,
+table.summary.pctl td {
+  padding: 6px 12px;
+}
+table.summary.pctl thead th {
+  text-align: right;
+}
+table.summary.pctl thead th[colspan] {
+  text-align: center;
+  color: var(--dim);
+}
+table.summary.pctl td.memcol {
+  text-align: right;
+}
+table.summary.pctl td.pctl-series {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  vertical-align: top;
+}
+table.summary.pctl td.pctl-series .lg-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 7px;
+  vertical-align: -1px;
+}
+table.summary.pctl .pctl-sep,
+table.summary.pctl .pctl-sep-h {
+  border-left: 2px solid var(--frame);
+}
+/* Warm P99/P99.9: correlation-limited (backed by ~cold-cycle count, not warm n).
+   A dotted underline + help cursor signals the explanatory title tooltip. */
+table.summary.pctl td.warm-tail {
+  text-decoration: underline dotted var(--faint);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+table.summary.pctl tr.pctl-block-top td {
+  border-top: 1px solid var(--grid);
+}
+
+/* Architecture win-rate. The tally is a 5-column table that should NOT bleed to
+   the full page width (it would leave absurd whitespace in the stacked-bar
+   column). Cap it to a comfortable measure and left-align; the collapsed
+   per-cell detail box below is capped to the SAME width so their left and right
+   edges line up. */
+/* Scroll in-column on narrow screens: the wrap is the scroll container and the
+   table keeps a min-width, so the 5 columns stay readable and scroll rather than
+   compress the numeric columns into an unreadable wrap. */
+.winrate-wrap {
+  max-width: 1100px;
+  overflow-x: auto;
+}
+.winlegend {
+  display: flex;
+  gap: 18px;
+  margin: 0 0 14px 2px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.winlegend .lg-swatch {
+  margin-right: 7px;
+  vertical-align: -1px;
+}
+table.winrate {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 620px;
+  font-size: 13.5px;
+}
+table.winrate th,
+table.winrate td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--grid);
+}
+table.winrate thead th {
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+table.winrate .winlang {
+  font-weight: 700;
+}
+table.winrate .winnum {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+table.winrate .winbar {
+  width: 60%;
+}
+table.winrate .winseg {
+  display: inline-block;
+  height: 18px;
+  line-height: 18px;
+  color: #0d0e11;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+}
+table.winrate .winseg:first-child {
+  border-radius: 4px 0 0 4px;
+}
+table.winrate .winseg:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+/* Next/prev pager. Framework caps its grid at 640px, which floats it left of
+   center under the full-width (`wide`) layout. Span the full content width so the
+   cards anchor to the left and right edges, matching the full-bleed charts and
+   the footer disclaimer below. Each card is a substantial, fixed-size navigation
+   card (the common docs-site pattern: Stripe / GitHub / Vercel), not text shrunk
+   to its label. */
+#observablehq-footer nav {
+  max-width: none;
+}
+#observablehq-footer nav a {
+  min-width: 240px;
+  max-width: 320px;
+  background: linear-gradient(160deg, var(--panel2), var(--panel));
+  border-radius: 12px;
+  transition: border-color 0.15s ease;
+}
+#observablehq-footer nav a[rel="prev"] {
+  justify-self: start;
+  align-items: start;
+}
+#observablehq-footer nav a[rel="next"] {
+  justify-self: end;
+  align-items: end;
+}
+/* The page-title line in each card, brighter than the "Next page" label. */
+#observablehq-footer nav a span {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Footer text block: a quiet disclaimer line over a brighter links row, set off
+   from the pager cards by a hairline rule so the legal prose reads as fine print
+   and the actions (Contact / Source / Disclaimer) stand on their own. */
+#observablehq-footer .foot-note {
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 95ch;
+  border-top: 1px solid var(--frame);
+  padding-top: 14px;
+  margin-top: 6px;
+}
+#observablehq-footer .foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+#observablehq-footer .foot-links a {
+  color: var(--accent);
+  font-weight: 600;
+}
+#observablehq-footer .foot-links .sep {
+  color: var(--frame);
+}
+
+/* Caption under charts/tables */
+.caption {
+  color: var(--faint);
+  font-size: 12px;
+  margin: 10px 2px 4px;
+  line-height: 1.5;
+}
+
+/* Chart card subtitle (the explanatory paragraph above each chart) */
+.chart-sub {
+  color: var(--dim);
+  font-size: 13px;
+  margin: 0 0 14px;
+  max-width: 95ch;
+  line-height: 1.5;
+}
+
+/* "Reading the ..." interpretive note: a chart-sub lifted a notch with a quiet
+   left accent, so a scanning reader catches the caveat that reframes the number
+   above it, without it reading as an alarm. */
+.chart-sub.read-me {
+  border-left: 3px solid var(--accent);
+  padding: 8px 12px;
+  margin: 4px 2px 16px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.chart-sub.read-me a {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Collapsible "show your work" disclosure: dense detail kept on the page in
+   context but folded away so it does not clutter the main read. */
+.chart-details {
+  max-width: 1100px;
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  margin: 4px 0 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+/* When a section heading follows a chart-details disclosure, restore the gap
+   that headings normally inherit from the previous block: Framework's H2/H3
+   reset `margin-top: 0` and the `<details>` provides only its own 8px bottom
+   margin, which is too tight for a section break. */
+.chart-details + h2,
+.chart-details + h3 {
+  margin-top: 1.5rem;
+}
+.chart-details > summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  color: var(--dim);
+  font-size: 13px;
+  font-weight: 600;
+  list-style-position: inside;
+  user-select: none;
+}
+.chart-details > summary:hover {
+  color: var(--text);
+}
+.chart-details[open] > summary {
+  border-bottom: 1px solid var(--grid);
+  margin-bottom: 8px;
+}
+.chart-details > *:not(summary) {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.chart-details > *:last-child {
+  padding-bottom: 12px;
+}
+
+/* ---- Narrow screens (phones / small tablets) ---- */
+/* Charts and tables handle their own responsiveness (fluid grids, in-column
+   scroll). This breakpoint fixes the remaining page-chrome pieces that assume a
+   wide viewport: the two-up footer pager, which otherwise forces two ~270px
+   cards side by side and overflows the page. */
+@media (max-width: 640px) {
+  /* Stack the prev/next pager into one column so neither card is clipped.
+     border-box so the card's 100% width includes its padding and border;
+     otherwise (Framework sets content-box) width:100% + padding + border
+     overflows the column by the border width. */
+  #observablehq-footer nav {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #observablehq-footer nav a {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  #observablehq-footer nav a[rel="prev"],
+  #observablehq-footer nav a[rel="next"] {
+    justify-self: stretch;
+    align-items: start;
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "lambdabench-site",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Interactive Observable Framework site for the AWS Lambda benchmark results.",
+  "scripts": {
+    "refresh-data": "rm -f src/.observablehq/cache/data/stats.json src/.observablehq/cache/data/lifecycle-*.json",
+    "predev": "npm run refresh-data",
+    "dev": "observable preview",
+    "prebuild": "npm run refresh-data",
+    "build": "observable build && node scripts/gen-seo-files.js",
+    "clean": "observable clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write --ignore-unknown .",
+    "format:check": "prettier --check --ignore-unknown ."
+  },
+  "dependencies": {
+    "@observablehq/framework": "^1.13.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
+    "prettier": "3.9.5",
+    "vitest": "^4.1.9"
+  }
+}

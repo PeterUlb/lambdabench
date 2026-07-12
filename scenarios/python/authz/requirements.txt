@@ -1,0 +1,7 @@
+# authz verifies RS256 JWTs. PyJWT is the standard Python JWT library; it
+# delegates RSA verification to `cryptography` -> OpenSSL, the production-grade,
+# assembly-optimized native crypto path (symmetric with Rust's AWS-LC, Node's
+# WebCrypto, Java's JCA; see invariant #2). `cryptography` ships a per-arch
+# native abi3 wheel, which is why the authz artifact is built per architecture.
+PyJWT==2.13.0
+cryptography==49.0.0

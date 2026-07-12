@@ -1,0 +1,82 @@
+# IntelliJ
+/.idea
+
+# macOS
+.DS_Store
+
+# Rust
+/target
+**/target
+# Per-opt-level build caches (see bencher build.rs). Glob covers o3/oz and any
+# leftover variants from removed experiments (e.g. target-o3-pad*).
+/target-o3*
+/target-oz*
+**/target-o3*
+**/target-oz*
+
+# Node
+node_modules
+scenarios/node/**/dist
+scenarios/node/.ssdk
+
+# Python: per-scenario staging dirs where `bencher build` lays out the handler +
+# pip-installed deps before zipping (regenerated every build).
+scenarios/python/.build
+# Python bytecode caches (e.g. from a local syntax check); never deployed.
+__pycache__/
+*.pyc
+
+# Smithy / Gradle codegen
+**/build
+.gradle
+
+# IDE (Eclipse / VS Code Java) compile output for the Java artifacts. Gradle uses
+# build/ (above); the IDE Java tooling drops compiled .class files in bin/.
+scenarios/**/bin/
+
+# Built deployable artifacts (regenerate via `bencher build`)
+/dist
+
+# Scratch space used to inspect templates
+/.tmp
+
+# Benchmark output is precious but large; keep the dir, ignore raw runs by default
+# (including archived runs in subdirectories). Comment these out to commit a run.
+# Results are gzipped JSONL (`*.jsonl.gz`); the plain `*.jsonl` patterns are kept
+# for older uncompressed runs.
+results/**/*.jsonl
+results/**/*.jsonl.gz
+results/**/*.meta.json
+results/*.jsonl
+results/*.jsonl.gz
+results/*.meta.json
+# Documentation-probe outputs (Cold Start Anatomy page). Written run-scoped into
+# results/ like the raw runs, discovered by the site's data loaders at build time,
+# and archived alongside the runs. Not committed: a stale (e.g. laptop-vantage)
+# probe run must never reach the published site as a fallback.
+results/**/lifecycle-*.json
+results/lifecycle-*.json
+
+# Observable Framework site: build output + Framework's own caches. The cache
+# (data loader output + fetched npm modules) lives under src/.observablehq; the
+# `**` glob covers it wherever Framework places it.
+site/out-site
+site/node_modules
+**/.observablehq/cache
+
+# Playwright MCP scratch output (console logs / screenshots from browser-driven
+# verification runs); never part of the project.
+.playwright-mcp/
+
+# authz scenario crypto fixtures: generated at build time by
+# bencher/fixtures/generate.mjs (NOT committed: a private key PEM + signed JWT
+# trip secret scanners, even though they are a throwaway benchmark key).
+bencher/fixtures/authz_signing_key.pem
+bencher/fixtures/authz_public_jwk.json
+bencher/fixtures/authz_token.txt
+# Cross-process generation lock (see generate.mjs); transient, never committed.
+bencher/fixtures/.authz-fixtures.lock
+# The Go authz handler embeds the public JWK via //go:embed, which cannot
+# reference a path outside its module, so the build stages a copy into the
+# package dir. Generated, not committed (same reason as above).
+scenarios/go/authz/authz_public_jwk.json

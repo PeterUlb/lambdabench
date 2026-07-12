@@ -1,0 +1,11 @@
+*.js
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# Cached context lookups (account-specific: VPC/subnet/account ids). Re-resolved on deploy.
+cdk.context.json

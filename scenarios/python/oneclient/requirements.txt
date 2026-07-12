@@ -1,0 +1,6 @@
+# Bundle boto3 (pinned) rather than using the runtime-provided copy, matching
+# invariant #3: each language ships its own pinned SDK so artifact size and
+# cold-start cost are honest. botocore is pinned alongside it for reproducibility
+# (boto3 floats its botocore range otherwise).
+boto3==1.43.33
+botocore==1.43.33

@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "plugins": {
+    "typescript-ssdk-codegen": {
+      "package": "@com.example/coffee-shop-server",
+      "packageVersion": "0.0.1"
+    }
+  }
+}

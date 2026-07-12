@@ -1,0 +1,28 @@
+[package]
+name = "lambdabench-rust-batch"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# Scenario "batch": a deserialize-heavy batch record processor (Kinesis/SQS-
+# consumer shape). At init the handler fetches a large (~16 MB) JSON array of
+# event records from S3 and holds the raw text in memory. Each warm invoke parses
+# the whole batch and groups-by key into a HashMap of running sum+count, then
+# emits the per-group totals. Read on two axes: the MEDIAN tracks JSON-parser
+# speed (here `serde`'s compile-time monomorphization, the fast end of the
+# spread), and the TAIL at low memory tracks allocation/GC: the parsed records
+# AND the group map are live at once for the whole invoke. This (non-GC) runtime
+# drops that graph at end of scope rather than tracing/collecting it. Contrast
+# lettercount, which counts into a fixed array (nothing grows).
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+lambda_runtime = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aws-config = "1"
+aws-sdk-s3 = "1"

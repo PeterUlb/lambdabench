@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "bencher",
+    "devtools",
+    "scenarios/rust/hello",
+    "scenarios/rust/oneclient",
+    "scenarios/rust/threeclient",
+    "scenarios/rust/lettercount",
+    "scenarios/rust/authz",
+    "scenarios/rust/batch",
+    "scenarios/rust/cache",
+]
+# scenarios/rust/smithy is intentionally excluded: it depends on a server SDK that
+# only exists after `gradlew` codegen, so it is its own self-contained cargo project
+# built by the `build` subcommand after codegen runs.
+exclude = ["scenarios/rust/smithy", "scenarios/rust/smithyfull", ".tmp"]
+
+# Left at Cargo's defaults on purpose. `release` covers the whole workspace,
+# including the `bencher` driver (built via `cargo run --release`) -- and bencher
+# is the harness, not a measured data point, and is I/O-bound on AWS anyway, so
+# fat LTO would just add build time it never earns back. The cold-start tuning
+# lives in `[profile.lambda]` instead. It can't be scoped per-package (`lto`/
+# `panic` aren't overridable there), so a separate profile is the only way to
+# keep it off bencher.
+
+[profile.lambda]
+# Optimize the deployed Lambda binaries: small + fast cold start. Applied only to
+# the artifacts-under-test, via `cargo lambda build --profile lambda` in
+# `bencher/src/build.rs`. The standalone smithy/smithyfull crates (excluded from
+# this workspace) define a matching `[profile.lambda]` of their own.
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+panic = "abort"

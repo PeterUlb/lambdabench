@@ -1,0 +1,39 @@
+[package]
+name = "lambdabench-rust-smithyfull"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# Scenario "smithyfull": the realistic shape, a Smithy server framework hosting a
+# handler that does real AWS work (DDB GetItem + KMS Encrypt + S3 GetObject).
+# Tests whether cold cost is additive: smithyfull ~= hello + (smithy framework)
+# + (three_client work). Reuses the SSDK generated under the sibling `smithy`
+# project (../smithy/server/build/...), so no separate codegen is needed.
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+# lambda_http MUST match what aws-smithy-http-server 0.65.x pins (^0.8.4).
+lambda_http = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+aws-config = "1"
+aws-sdk-dynamodb = "1"
+aws-sdk-kms = "1"
+aws-sdk-s3 = "1"
+
+# Generated server SDK (shared with the `smithy` scenario), Lambda adapter on.
+coffeeshop_server_sdk = { path = "../smithy/server/build/smithyprojections/server/source/rust-server-codegen", features = ["aws-lambda"] }
+
+# Standalone crate (excluded from the root workspace, depends on generated
+# code). Declare the same optimizations as the rest of the Rust matrix, under the
+# same profile name bencher builds with (`--profile lambda`).
+[profile.lambda]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+panic = "abort"

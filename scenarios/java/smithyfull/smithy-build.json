@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "plugins": {
+    "java-codegen": {
+      "service": "com.example#CoffeeShop",
+      "namespace": "lambdabench.coffeeshop",
+      "modes": ["server"]
+    }
+  }
+}

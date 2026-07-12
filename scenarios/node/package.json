@@ -1,0 +1,23 @@
+{
+  "name": "lambdabench-node-artifacts",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Node 24 Lambda artifacts for lambdabench: hello, smithy, oneclient, threeclient, smithyfull, lettercount, authz, batch, cache.",
+  "scripts": {
+    "codegen": "cd smithy && ./gradlew :smithy:build --console=plain",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1057.0",
+    "@aws-sdk/client-kms": "3.1057.0",
+    "@aws-sdk/client-s3": "3.1057.0",
+    "@aws-smithy/server-apigateway": "1.0.0-alpha.10",
+    "@com.example/coffee-shop-server": "file:./.ssdk",
+    "jose": "6.2.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.0"
+  }
+}

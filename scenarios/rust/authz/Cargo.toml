@@ -1,0 +1,32 @@
+[package]
+name = "lambdabench-rust-authz"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# Scenario "authz": the realistic JWT-authorizer hot path: mixed native-crypto + in-language work.
+# The signed RS256 JWT arrives in the invoke payload (as a real authorizer
+# receives the token with the request); the verification public key (JWK) is
+# embedded at build time. Each invoke verifies the token's RSA signature (via
+# `jsonwebtoken` -> AWS-LC, an assembly-optimized native path) and
+# extracts/type-maps its claims. RS256 verify is a cheap public-key op, so the
+# in-language glue (base64/JSON decode + claim mapping) still dominates: the
+# counterpart to `lettercount`, asking how much language choice matters when only
+# PART of the CPU is in a shared native lib (answer: a moderate amount).
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+lambda_runtime = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde_json = "1"
+# RS256 verification. jsonwebtoken 10 requires an explicit crypto backend; we
+# pick `aws_lc_rs` (AWS-LC, via aws-lc-sys), the same assembly-optimized,
+# hardware-accelerated native crypto the rest of the Rust stack already links,
+# and the fair counterpart to Node's `jose` → WebCrypto/OpenSSL. NOT the
+# `rust_crypto` backend, which is a pure-Rust software path and would reintroduce
+# the exact software-vs-hardware unfairness the old SHA workload had. See README
+# "Fairness note".
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
