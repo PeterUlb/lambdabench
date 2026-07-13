@@ -83,8 +83,16 @@ pub const KMS_ALIAS: &str = "alias/lambdabench-key";
 /// Teardown's sweep additionally calls `kms:ListKeys` and `kms:ListResourceTags`.
 /// The deploy CDK (deploy/cdk/lib/bench-runner-stack.ts) must keep this key/value
 /// in sync with that policy condition and grant those two list actions.
-pub const KMS_TAG_KEY: &str = "lambdabench";
-pub const KMS_TAG_VALUE: &str = PREFIX;
+///
+/// Unlike every other resource, the orphan sweep finds candidates by scanning
+/// every KMS key in the account/region (see `reclaim_orphaned_kms_keys`), not by
+/// an exact, predetermined name, so this tag is the only thing distinguishing a
+/// lambdabench-owned key from someone else's in a shared account. Deliberately a
+/// specific, namespaced phrase (not a bare word like `"lambdabench"`, which a
+/// coincidental unrelated tag could realistically match) to keep that sweep's
+/// blast radius as narrow as the exact-name deletes everywhere else.
+pub const KMS_TAG_KEY: &str = "lambdabench-managed-kms-key";
+pub const KMS_TAG_VALUE: &str = "true";
 pub const S3_BUCKET_SUFFIX: &str = PREFIX;
 pub const S3_OBJECT_KEY: &str = "lambdabench-object";
 pub const S3_OBJECT_BODY: &str = "lambdabench-seeded-s3-object-body";

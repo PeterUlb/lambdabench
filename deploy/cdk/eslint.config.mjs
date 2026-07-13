@@ -4,7 +4,15 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules", "cdk.out", "jest.config.js"],
+    // Mirror .gitignore: never lint compiled output (tsc emits *.js/*.d.ts
+    // alongside the .ts sources). eslint has no visibility into .gitignore.
+    ignores: [
+      "node_modules",
+      "cdk.out",
+      "jest.config.js",
+      "**/*.js",
+      "**/*.d.ts",
+    ],
   },
   eslint.configs.recommended,
   tseslint.configs.recommendedTypeChecked,

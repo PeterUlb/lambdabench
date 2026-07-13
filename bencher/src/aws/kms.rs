@@ -3,7 +3,8 @@
 //!
 //! Ensures a single symmetric encryption key exists, addressed by a stable
 //! alias, and tears it down. The key is tagged at creation so teardown can
-//! reclaim it even when the alias is missing (see `delete_kms_key`).
+//! reclaim it even when the alias is missing (see `reclaim_orphaned_kms_keys`,
+//! run as its own step after `delete_kms_key`).
 
 use super::Aws;
 use crate::config::{KMS_ALIAS, KMS_TAG_KEY, KMS_TAG_VALUE};
@@ -40,8 +41,8 @@ impl Aws {
         // kms:ScheduleKeyDeletion by this tag, not by alias, because teardown
         // removes the alias before scheduling. The tag is also what lets teardown
         // reclaim an aliasless orphan: if CreateAlias and the best-effort schedule
-        // below both fail, `delete_kms_key`'s tag sweep is the only path that can
-        // still find and delete this key.
+        // below both fail, teardown's `reclaim_orphaned_kms_keys` tag sweep is the
+        // only path that can still find and delete this key.
         let created = self
             .kms
             .create_key()
@@ -97,11 +98,11 @@ impl Aws {
     /// mid-run. So a non-not-found alias-delete error is surfaced; an absent alias
     /// is success.
     ///
-    /// The alias path alone cannot reclaim an aliasless orphan: if `ensure_kms_key`
-    /// created and tagged a key but then both `CreateAlias` and its best-effort
-    /// orphan-schedule failed, the key survives with our tag and no alias, so
-    /// `resolve_alias_key_id` never finds it. A tag sweep (below) reclaims exactly
-    /// that key, which is the reason the key is tagged at creation.
+    /// Deliberately separate from `reclaim_orphaned_kms_keys`, which teardown calls
+    /// as its own step: that sweep is best-effort and account/region-wide (it walks
+    /// keys we never created), so folding it into this `Result` would report this
+    /// step as failed - hiding that the key + alias were in fact torn down -
+    /// whenever the sweep alone hits trouble.
     pub async fn delete_kms_key(&self) -> Result<()> {
         let key_id = self
             .resolve_alias_key_id("kms:ListAliases (teardown)")
@@ -116,10 +117,7 @@ impl Aws {
         if let Some(id) = key_id {
             self.schedule_key_deletion_idempotent(&id).await?;
         }
-        // Reclaim any tagged-but-aliasless orphan left by a double CreateAlias +
-        // orphan-schedule failure. This also re-encounters the just-scheduled
-        // aliased key (now PendingDeletion), which the idempotent helper tolerates.
-        self.reclaim_orphaned_kms_keys().await
+        Ok(())
     }
 
     /// Schedules a key for deletion, treating "already scheduled" as success.
@@ -150,8 +148,15 @@ impl Aws {
     /// teardown path cannot see it. Scans all pages of `ListKeys`; a page error is
     /// surfaced, not silently ended, so a partial scan cannot leave an orphan
     /// unreported. Each key needs a `ListResourceTags` call to read its tags,
-    /// which is why this is a teardown-only cost.
-    async fn reclaim_orphaned_kms_keys(&self) -> Result<()> {
+    /// which is why this is a teardown-only cost. `ListKeys` is account/region-wide
+    /// (it has no tag or ownership filter), so this also walks keys we never
+    /// created, including AWS-managed ones; see `key_has_creation_tag` for how
+    /// those are told apart from ours.
+    ///
+    /// Its own teardown step, run after `delete_kms_key`: this also re-encounters
+    /// the key `delete_kms_key` just scheduled (now `PendingDeletion`), which
+    /// `schedule_key_deletion_idempotent` tolerates.
+    pub async fn reclaim_orphaned_kms_keys(&self) -> Result<()> {
         let mut keys = self.kms.list_keys().into_paginator().items().send();
         while let Some(entry) = keys.next().await {
             let entry = entry.context("kms:ListKeys (teardown orphan sweep)")?;
@@ -166,7 +171,13 @@ impl Aws {
     /// True if the key carries our `KMS_TAG_KEY=KMS_TAG_VALUE` creation tag. Scans
     /// all tag pages via the paginator. A key deleted mid-sweep
     /// (`NotFoundException`) is treated as untagged (nothing to reclaim); other
-    /// errors surface.
+    /// errors surface, except `AccessDeniedException`: `ListKeys` (unlike
+    /// `ListAliases`) enumerates every key in the account/region, including
+    /// AWS-managed keys (`aws/s3`, `aws/acm`, ...) and keys from unrelated stacks,
+    /// whose own key policy does not delegate to this role no matter how broad its
+    /// identity policy is. Any key we created carries the default key policy
+    /// (delegates to account IAM), so a denial here can only mean "not ours",
+    /// treated the same as untagged rather than failing the whole sweep.
     async fn key_has_creation_tag(&self, key_id: &str) -> Result<bool> {
         let mut tags = self
             .kms
@@ -181,7 +192,10 @@ impl Aws {
                 Err(err) => {
                     return super::not_found_as_none(
                         err,
-                        |e| e.is_not_found_exception(),
+                        |e| {
+                            e.is_not_found_exception()
+                                || e.meta().code() == Some("AccessDeniedException")
+                        },
                         "kms:ListResourceTags (teardown orphan sweep)",
                     )
                     .map(|_| false);

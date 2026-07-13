@@ -78,13 +78,20 @@ pub async fn teardown(aws: &Aws) -> Result<()> {
     }
 
     // Each resource delete runs regardless of earlier failures.
-    let steps: [(&str, Result<()>); 5] = [
+    let steps: [(&str, Result<()>); 6] = [
         ("IAM role", aws.delete_role().await),
         ("DynamoDB table", aws.delete_table().await),
         ("S3 bucket + object", aws.delete_s3().await),
         (
             "KMS key (scheduled, 7-day window) + alias",
             aws.delete_kms_key().await,
+        ),
+        // Separate step from the above: best-effort and account/region-wide (see
+        // `reclaim_orphaned_kms_keys`), so a failure here must not be reported as
+        // "the key + alias" step failing when that part already succeeded.
+        (
+            "KMS orphan-key sweep",
+            aws.reclaim_orphaned_kms_keys().await,
         ),
         // Reclaim the synthetic image family's ECR repo by its exact name (not a
         // prefix sweep), so the CDK-managed `lambdabench-runner` repo, which

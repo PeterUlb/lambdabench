@@ -39,6 +39,16 @@ cargo run -p bencher -- teardown        # delete functions + role + table (asks 
 cd site && npm install && npm run dev   # explore the results in the browser
 ```
 
+> [!WARNING]
+> **Use an AWS account dedicated to this project** (a personal sandbox account, not one shared with
+> other work). Every resource name `run`/`teardown` touch is a fixed literal, not namespaced per
+> clone or per run (e.g. the DynamoDB table is always `lambdabench-table`, the KMS key always sits
+> behind `alias/lambdabench-key`). `teardown` deletes by these exact names, plus one broader sweep: it
+> also scans every KMS key in the account/region and schedules deletion (7-day recoverable window) for
+> any carrying lambdabench's tag. In an account shared with another lambdabench checkout, or that
+> happens to have an unrelated resource sharing a name/tag, `run`/`teardown` cannot tell it apart from
+> its own. See [Region / account](#region--account).
+
 `run` owns the full pipeline (build → deploy → benchmark), so there is no separate deploy step. To
 iterate without repeating work, scope `run` and skip the phases that have not changed:
 `run --skip-build` reuses the artifacts already in `dist/`, and `run --skip-deploy` invokes the
@@ -448,6 +458,26 @@ wall-clock, so running near the driver shortens a full run substantially. To mov
 constant: the S3 bucket name includes the region (so names never collide across regions), and bucket
 creation sets the required `LocationConstraint` for any non-us-east-1 region automatically. The driver
 prints the resolved AWS identity in `doctor` and refuses to run if credentials are missing or expired.
+
+**Deploy this to an account of its own.** Every resource `run` creates and `teardown` deletes, the
+Lambda functions, log groups, IAM role, DynamoDB table, S3 bucket, ECR repo, KMS key/alias, has a
+name computed from fixed constants in `config.rs`, the same on every clone; nothing is namespaced per
+user or per run. `teardown` deletes each by that exact, predetermined name (see
+`bencher/src/teardown.rs`'s module doc: never a prefix sweep of a live account listing), and none of
+these deletes check ownership first: `DeleteFunction`, `DeleteTable`, `DeleteBucket`, and the rest all
+act on whatever resource holds that name, lambdabench's or not. In practice that's a low-probability
+collision, since a matrix function name is a full descriptor (e.g.
+`lambdabench-rust-hello-arm64-o3-1024`: language + scenario + arch + opt/snap/jitter + memory) unlikely
+to already exist by chance. The KMS orphan sweep is the one exception worth calling out separately: it
+doesn't get handed a name at all, but lists every KMS key in the account/region and schedules deletion
+for any carrying the tag `lambdabench-managed-kms-key=true` (needed because that key can lose its
+alias, its only other handle, to a prior failed run), so it can in principle reach a key that merely
+happens to carry the same tag rather than one sharing a specific name.
+
+None of this is namespaced per run, so one collision *is* guaranteed rather than just low-probability:
+two lambdabench checkouts run by different people in the same account produce identical names (and the
+same KMS tag) for everything, so either one's `teardown` deletes the other's resources in full. A
+dedicated account removes both the coincidence risk and the guaranteed one.
 
 ## Layout
 
