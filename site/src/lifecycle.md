@@ -170,6 +170,7 @@ the reported `Init Duration`.
    on one line so a value never wraps away from its unit. */
 table.dlstart td.num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 table.dlstart td.resid { text-align: left; }
+table.dlstart th.num { text-align: right; }
 </style>
 
 ## The hidden steps: download + environment start
@@ -207,12 +208,12 @@ display(
           <thead>
             <tr>
               <th>scenario</th>
-              <th>mem</th>
-              <th>zip</th>
-              <th>W_cold</th>
-              <th>init</th>
-              <th>cold dur</th>
-              <th>warm RTT</th>
+              <th class="num">mem</th>
+              <th class="num">zip</th>
+              <th class="num">W_cold</th>
+              <th class="num">init</th>
+              <th class="num">cold dur</th>
+              <th class="num">warm RTT</th>
               <th><strong>residual (download + start)</strong></th>
             </tr>
           </thead>
@@ -477,9 +478,9 @@ display(
   html`<table class="dlstart">
     <thead>
       <tr>
-        <th>Added size</th>
-        <th><code>.zip</code> total</th>
-        <th>image total</th>
+        <th class="num">Added size</th>
+        <th class="num"><code>.zip</code> total</th>
+        <th class="num">image total</th>
       </tr>
     </thead>
     <tbody>
