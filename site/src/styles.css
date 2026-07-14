@@ -18,6 +18,14 @@
   --faint: #6b7280;
   --accent: #7fb0ff;
 
+  /* Line-length cap for explanatory prose (hero intro, chart subtitles,
+     footer note); deliberately narrower blocks (scenario blurbs, callouts)
+     keep their own widths. */
+  --measure: 95ch;
+  /* Width cap for wide non-prose blocks (win-rate table, chart-details
+     disclosures). */
+  --content-cap: 1100px;
+
   /* Drive Framework's chrome from the same palette. */
   --theme-background: var(--bg);
   --theme-background-alt: var(--panel);
@@ -143,7 +151,7 @@ html {
   display: flex;
   flex-wrap: wrap;
   gap: 18px 28px;
-  background: rgba(13, 14, 17, 0.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(6px);
   border: 1px solid var(--grid);
   border-radius: 14px;
@@ -427,7 +435,7 @@ table.summary.pctl tr.pctl-block-top td {
    table keeps a min-width, so the 5 columns stay readable and scroll rather than
    compress the numeric columns into an unreadable wrap. */
 .winrate-wrap {
-  max-width: 1100px;
+  max-width: var(--content-cap);
   overflow-x: auto;
 }
 .winlegend {
@@ -476,7 +484,7 @@ table.winrate .winseg {
   display: inline-block;
   height: 18px;
   line-height: 18px;
-  color: #0d0e11;
+  color: var(--bg);
   font-size: 11px;
   font-weight: 700;
   text-align: center;
@@ -528,7 +536,7 @@ table.winrate .winseg:last-child {
   color: var(--faint);
   font-size: 12px;
   line-height: 1.5;
-  max-width: 95ch;
+  max-width: var(--measure);
   border-top: 1px solid var(--frame);
   padding-top: 14px;
   margin-top: 6px;
@@ -562,7 +570,7 @@ table.winrate .winseg:last-child {
   color: var(--dim);
   font-size: 13px;
   margin: 0 0 14px;
-  max-width: 95ch;
+  max-width: var(--measure);
   line-height: 1.5;
 }
 
@@ -585,7 +593,7 @@ table.winrate .winseg:last-child {
 /* Collapsible "show your work" disclosure: dense detail kept on the page in
    context but folded away so it does not clutter the main read. */
 .chart-details {
-  max-width: 1100px;
+  max-width: var(--content-cap);
   border: 1px solid var(--grid);
   border-radius: 12px;
   margin: 4px 0 8px;

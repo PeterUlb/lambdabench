@@ -167,9 +167,9 @@ display(headToHead(v));
 .hero .eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
 .hero h1 { font-size: 34px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; margin: 10px 0 4px; }
 .hero .langs-title { font-size: 22px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; margin: 0 0 8px; }
-.hero-sub { color: var(--dim); font-size: 15px; max-width: 75ch; line-height: 1.5; margin-top: 6px; }
+.hero-sub { color: var(--dim); font-size: 15px; max-width: var(--measure); line-height: 1.5; margin-top: 6px; }
 .hero-disclaimer {
-  margin-top: 12px; max-width: 75ch; padding: 8px 12px;
+  margin-top: 12px; max-width: var(--measure); padding: 8px 12px;
   font-size: 13px; line-height: 1.45; color: var(--dim);
   background: color-mix(in srgb, var(--panel) 70%, transparent);
   border: 1px solid var(--frame); border-left: 3px solid var(--accent);

@@ -158,6 +158,20 @@ const SM_MIN_PANEL = 224;
 const SM_MAX_PANEL = 520;
 const SM_GAP = 10;
 
+// Column count for `n` panels: `fit` is the most columns the container holds
+// at >= minPanel each, which fixes the row count at ceil(n / fit); the result
+// is the fewest columns that still fill those rows, ceil(n / rows), so the
+// freed width goes to wider panels and the last row stays as full as the row
+// count allows. Dropping columns only ever widens panels, so the minPanel
+// floor holds; the caller caps the resulting panel width at maxPanel.
+function balancedCols(n, containerWidth, minPanel) {
+  const fit = Math.max(
+    1,
+    Math.min(n, Math.floor((containerWidth + SM_GAP) / (minPanel + SM_GAP))),
+  );
+  return Math.ceil(n / Math.ceil(n / fit));
+}
+
 // `plotFor(scenario, isFirst, panelWidth)` returns Plot options (or null to skip
 // an empty panel), receiving the measured width to size its SVG. Each panel is
 // independently scaled unless a chart opts into a shared domain: a shared Y would
@@ -176,13 +190,7 @@ function smallMultiples(
   const render = (containerWidth) => {
     const n = scenarios.length;
     if (containerWidth <= 0 || n === 0) return;
-    const cols = Math.max(
-      1,
-      Math.min(
-        n,
-        Math.floor((containerWidth + SM_GAP) / (SM_MIN_PANEL + SM_GAP)),
-      ),
-    );
+    const cols = balancedCols(n, containerWidth, SM_MIN_PANEL);
     const raw = (containerWidth - (cols - 1) * SM_GAP) / cols;
     const panelW = Math.floor(Math.min(raw, maxPanel));
     if (panelW === lastPanelW) return;
@@ -227,13 +235,7 @@ function panelGrid(items, { minPanel, maxPanel, invalidation }) {
   let lastPanelW = -1;
   const render = (containerWidth) => {
     if (containerWidth <= 0 || items.length === 0) return;
-    const cols = Math.max(
-      1,
-      Math.min(
-        items.length,
-        Math.floor((containerWidth + SM_GAP) / (minPanel + SM_GAP)),
-      ),
-    );
+    const cols = balancedCols(items.length, containerWidth, minPanel);
     const raw = Math.floor((containerWidth - (cols - 1) * SM_GAP) / cols);
     // Clamp to [minPanel, maxPanel]; the floor forces the in-column scroll
     // instead of unreadable labels.
