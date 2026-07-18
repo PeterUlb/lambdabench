@@ -307,6 +307,9 @@ measurement-purity rules above. It measures **caller-side wall-clock** around th
 `Invoke` call to isolate the pre-Init download+start cost that no `REPORT`-line
 signal can see, whereas the matrix records only in-Lambda REPORT timings and pins
 the region precisely to *minimize* caller wall-clock as noise (`config.rs::REGION`).
+Alongside that decomposition it also records the full cold/warm caller waits
+(`w_cold`/`w_warm`, p50 + min–max), which the site publishes as the end-to-end
+wait from the probe's vantage.
 So the "same task per language", bundled-SDK, and reproducibility rules do not apply
 to it: its output is single-account, region-specific magnitudes, written run-scoped
 into `results/` (gitignored) and discovered by the site's data loader at build time,

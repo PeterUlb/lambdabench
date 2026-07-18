@@ -16,38 +16,70 @@ pub(super) struct Sample {
     /// own handler `Duration`, so handler processing does not leak into the
     /// residual (see `take_sample`).
     pub(super) warm_rtt: f64,
+    /// A warm invoke's FULL wall-clock (median over this sample's warm invokes,
+    /// handler `Duration` included): the end-to-end wait a warm caller sees from
+    /// this vantage. `warm_rtt` above is this minus the handler's own Duration,
+    /// per invoke; keeping both lets the site publish the full caller wait
+    /// without un-subtracting.
+    pub(super) w_warm: f64,
     pub(super) residual: f64,
 }
 
-/// The p50s + residual spread of a set of samples, shared by the zip-family
+/// The p50s + spreads of a set of samples, shared by the zip-family
 /// (`SyntheticSample`), image-family (`ImageSample`), and matrix-cell
 /// (`CellResult`) aggregation so every family reduces identically.
+///
+/// Spread (min-max) is carried for the three published-as-headline quantities:
+/// the residual (the decomposition's payoff) and the two full caller waits
+/// (`w_cold`, `w_warm`), so the page can always show a range next to a p50 it
+/// asks the reader to rely on. The pure subtraction terms (init, cold_dur,
+/// warm_rtt) stay p50-only.
 pub(super) struct Aggregated {
     pub(super) n_samples: u32,
     pub(super) w_cold_p50: f64,
+    pub(super) w_cold_min: f64,
+    pub(super) w_cold_max: f64,
     pub(super) init_p50: f64,
     pub(super) cold_dur_p50: f64,
     pub(super) warm_rtt_p50: f64,
+    pub(super) w_warm_p50: f64,
+    pub(super) w_warm_min: f64,
+    pub(super) w_warm_max: f64,
     pub(super) residual_p50: f64,
     pub(super) residual_min: f64,
     pub(super) residual_max: f64,
 }
 
-/// Reduces a set of samples to the p50 of each term plus the residual spread.
+/// Min-max of a sample slice (assumes non-empty, like `median`).
+fn spread(v: &[f64]) -> (f64, f64) {
+    let min = v.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (min, max)
+}
+
+/// Reduces a set of samples to the p50 of each term plus the residual and
+/// caller-wait spreads.
 pub(super) fn aggregate(samples: &[Sample]) -> Aggregated {
     let mut w_cold: Vec<f64> = samples.iter().map(|s| s.w_cold).collect();
     let mut init: Vec<f64> = samples.iter().map(|s| s.init).collect();
     let mut cold_dur: Vec<f64> = samples.iter().map(|s| s.cold_duration).collect();
     let mut warm: Vec<f64> = samples.iter().map(|s| s.warm_rtt).collect();
+    let mut w_warm: Vec<f64> = samples.iter().map(|s| s.w_warm).collect();
     let mut resid: Vec<f64> = samples.iter().map(|s| s.residual).collect();
-    let residual_min = resid.iter().copied().fold(f64::INFINITY, f64::min);
-    let residual_max = resid.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let (w_cold_min, w_cold_max) = spread(&w_cold);
+    let (w_warm_min, w_warm_max) = spread(&w_warm);
+    let (residual_min, residual_max) = spread(&resid);
     Aggregated {
         n_samples: samples.len() as u32,
         w_cold_p50: median(&mut w_cold),
+        w_cold_min,
+        w_cold_max,
         init_p50: median(&mut init),
         cold_dur_p50: median(&mut cold_dur),
         warm_rtt_p50: median(&mut warm),
+        w_warm_p50: median(&mut w_warm),
+        w_warm_min,
+        w_warm_max,
         residual_p50: median(&mut resid),
         residual_min,
         residual_max,
@@ -128,6 +160,7 @@ pub(super) async fn take_sample(
     // handler but tens of ms for an SDK-heavy one. Netting out both handler terms
     // makes `residual` the download + environment-start cost regardless of handler.
     let mut warm = Vec::with_capacity(warm_per_sample as usize);
+    let mut warm_wall = Vec::with_capacity(warm_per_sample as usize);
     for i in 1..=warm_per_sample {
         let (res, w) = aws
             .invoke_tail_timed_by_name(timed, name, payload, None)
@@ -138,12 +171,15 @@ pub(super) async fn take_sample(
         if report.is_cold() {
             bail!("{name}: warm invoke {i} unexpectedly cold-started (sandbox retired mid-sample)");
         }
+        let wall = w.as_secs_f64() * 1000.0;
         // Wall-clock minus the handler's own Duration = network + overhead only.
         // Clamp at 0 in the rare case clock skew makes Duration exceed wall-clock.
-        let net = (w.as_secs_f64() * 1000.0 - report.duration_ms).max(0.0);
+        let net = (wall - report.duration_ms).max(0.0);
         warm.push(net);
+        warm_wall.push(wall);
     }
     let warm_rtt = median(&mut warm);
+    let w_warm = median(&mut warm_wall);
     let residual = w_cold - init - cold_duration - warm_rtt;
 
     Ok(Sample {
@@ -151,6 +187,7 @@ pub(super) async fn take_sample(
         init,
         cold_duration,
         warm_rtt,
+        w_warm,
         residual,
     })
 }
@@ -174,8 +211,8 @@ pub(super) async fn sample_cold_series(
                 .await
                 .with_context(|| format!("cold sample {s}/{cold_samples} of {name}"))?;
             println!(
-                "   sample {s}/{cold_samples}: W_cold={:.1} init={:.1} cold_dur={:.1} warm_rtt={:.1} -> residual={:.1} ms",
-                sm.w_cold, sm.init, sm.cold_duration, sm.warm_rtt, sm.residual,
+                "   sample {s}/{cold_samples}: W_cold={:.1} init={:.1} cold_dur={:.1} warm_rtt={:.1} W_warm={:.1} -> residual={:.1} ms",
+                sm.w_cold, sm.init, sm.cold_duration, sm.warm_rtt, sm.w_warm, sm.residual,
             );
             samples.push(sm);
         }
@@ -243,6 +280,7 @@ mod tests {
             init: 0.0,
             cold_duration: 0.0,
             warm_rtt: 0.0,
+            w_warm: 0.0,
             residual,
         }
     }
@@ -262,7 +300,7 @@ mod tests {
     }
 
     /// `aggregate` reduces each per-sample term to its own median and reports the
-    /// residual spread (min/max) across the raw samples.
+    /// residual and caller-wait spreads (min/max) across the raw samples.
     #[test]
     fn aggregate_reduces_each_term_and_reports_spread() {
         let samples = [
@@ -271,6 +309,7 @@ mod tests {
                 init: 100.0,
                 cold_duration: 20.0,
                 warm_rtt: 5.0,
+                w_warm: 7.0,
                 residual: 175.0,
             },
             Sample {
@@ -278,6 +317,7 @@ mod tests {
                 init: 110.0,
                 cold_duration: 22.0,
                 warm_rtt: 6.0,
+                w_warm: 8.5,
                 residual: 182.0,
             },
             Sample {
@@ -285,6 +325,7 @@ mod tests {
                 init: 105.0,
                 cold_duration: 21.0,
                 warm_rtt: 4.0,
+                w_warm: 6.0,
                 residual: 180.0,
             },
         ];
@@ -295,8 +336,13 @@ mod tests {
         assert_eq!(a.init_p50, 105.0);
         assert_eq!(a.cold_dur_p50, 21.0);
         assert_eq!(a.warm_rtt_p50, 5.0);
+        assert_eq!(a.w_warm_p50, 7.0);
         assert_eq!(a.residual_p50, 180.0);
-        // Spread is over the raw residuals, not derived from the p50.
+        // Spreads are over the raw samples, not derived from the p50s.
+        assert_eq!(a.w_cold_min, 300.0);
+        assert_eq!(a.w_cold_max, 320.0);
+        assert_eq!(a.w_warm_min, 6.0);
+        assert_eq!(a.w_warm_max, 8.5);
         assert_eq!(a.residual_min, 175.0);
         assert_eq!(a.residual_max, 182.0);
     }

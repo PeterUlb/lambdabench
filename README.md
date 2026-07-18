@@ -102,8 +102,12 @@ cd site && npm run build                   # static site -> site/out-site/ (host
 cold start's first two sub-phases, downloading the code and starting the execution environment, run *before*
 `Init Duration`'s clock and so appear in no `REPORT` line or CloudWatch function metric; the only
 vantage point on them is the caller's wall-clock, isolated by subtraction
-(`residual = W_cold − init − cold_duration − warm_rtt`). It has **two explicit subcommands**, one
-per [Cold Start Anatomy](site/src/lifecycle.md) chart; there is no default mode:
+(`residual = W_cold − init − cold_duration − warm_rtt`). Alongside that decomposition it records
+the full caller wall-clocks themselves (`w_cold`/`w_warm`, p50 + min–max), which the site publishes
+as the end-to-end wait a same-region caller sees, cold and warm (network vs Lambda's per-invoke
+front-end is one un-itemized lump, so a "minus network" number is deliberately not claimed). It
+has **two explicit subcommands**, one per [Cold Start Anatomy](site/src/lifecycle.md) chart; there
+is no default mode:
 
 ```sh
 # Deploy the matrix first (bencher run, or bencher run --skip-build), then:

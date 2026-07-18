@@ -334,6 +334,55 @@ if rh:
         "Duration nor the invoke Duration' (derived at build time)",
     )
 
+# --- Claim 6d: the caller-wait formula ("What a caller actually waits through"). ---
+# The formula needs the caller-wait fields (w_warm_p50 + the W_cold/W_warm
+# min-max spreads); a probe JSON lacking them comes from an outdated probe
+# binary, and the site's data loader refuses to build from it (stale data gets
+# the missing-data posture), so their absence is flagged here too, earlier and
+# with the same re-run pointer, rather than surfacing only as a build failure.
+# When present, guard the vantage-independent
+# shape the prose asserts: a warm wall-clock exceeds its own net RTT by a few ms
+# (the handler's own Duration, for hello), a cold wall-clock sits well above the
+# warm one, and the formula's four medians sum to roughly the measured W_cold.
+wait_fields = ("w_warm_p50", "w_cold_min", "w_cold_max", "w_warm_min", "w_warm_max")
+have_wait = all(all(f in c for f in wait_fields) for c in scells)
+check(
+    "caller-wait fields present",
+    have_wait,
+    "all cells carry w_warm_p50 + W_cold/W_warm min-max"
+    if have_wait
+    else "probe JSON predates the caller-wait fields (re-run probe download-start)",
+    "the 'What a caller actually waits through' sanity-check table (the site's data loader "
+    "refuses to build without them)",
+)
+if have_wait and rh:
+    cell = next((c for c in rh if c["memory_mb"] == 128), rh[0])
+    gap = cell["w_warm_p50"] - cell["warm_rtt_p50"]
+    check(
+        "rust/hello warm wait ≈ front-end lump + handler Duration",
+        -1.0 <= gap <= 10.0,
+        f"w_warm_p50 - warm_rtt_p50 = {gap:.1f} ms (expect ~0-10; medians are independent, "
+        "so slightly negative is noise)",
+        "'the directly measured warm wall-clock W_warm sits above that cell's front-end "
+        "lump by just the handler's own Duration, a few ms'",
+    )
+    check(
+        "rust/hello cold wait well above warm wait",
+        cell["w_cold_p50"] > cell["w_warm_p50"] + 50,
+        f"W_cold {cell['w_cold_p50']:.0f} vs W_warm {cell['w_warm_p50']:.0f} ms "
+        "(expect cold to carry the ~100 ms-scale residual on top)",
+        "'expected cold wait ≈ cold start + residual + front-end lump' (the formula's cold side)",
+    )
+    formula = (cell["init_p50"] + cell["cold_duration_p50"]
+              + cell["residual_p50"] + cell["warm_rtt_p50"])
+    check(
+        "rust/hello formula sums to the measured cold wait (~15%)",
+        abs(formula - cell["w_cold_p50"]) <= 0.15 * cell["w_cold_p50"],
+        f"init+cold_dur+residual+warm_rtt = {formula:.0f} vs W_cold {cell['w_cold_p50']:.0f} ms "
+        "(independent medians, so approximate agreement is the claim)",
+        "'formula and measurement agree approximately, not exactly' (the sanity-check table)",
+    )
+
 # --- Claims 7-10: the container-image "Zip vs container image" subsection. ---
 # The image family is a first-class committed input the pipeline refreshes, like
 # the zip families.

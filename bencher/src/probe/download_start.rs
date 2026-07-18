@@ -49,9 +49,14 @@ struct CellResult {
     unzipped_bytes: u64,
     n_samples: u32,
     w_cold_p50: f64,
+    w_cold_min: f64,
+    w_cold_max: f64,
     init_p50: f64,
     cold_duration_p50: f64,
     warm_rtt_p50: f64,
+    w_warm_p50: f64,
+    w_warm_min: f64,
+    w_warm_max: f64,
     residual_p50: f64,
     residual_min: f64,
     residual_max: f64,
@@ -228,7 +233,9 @@ pub(super) async fn run_download_start(
         note: "illustrative, environment-dependent magnitudes (single client, single account; \
                not matrix data). residual = W_cold - init - cold_duration - warm_rtt \
                (mostly download + environment start, plus a small scheduling/placement remainder \
-               the warm-RTT subtraction does not cancel; all of it invisible to the REPORT line)."
+               the warm-RTT subtraction does not cancel; all of it invisible to the REPORT line). \
+               w_cold / w_warm are the FULL caller wall-clocks of a cold / warm invoke from this \
+               client (pooled HTTPS connection), so they include the client->region network path."
             .to_string(),
         n_warm_per_sample: args.common.warm_per_sample,
         cells: results,
@@ -356,9 +363,14 @@ fn aggregate_cell(cell: &Cell, zip: u64, unzipped: u64, samples: &[Sample]) -> C
         unzipped_bytes: unzipped,
         n_samples: a.n_samples,
         w_cold_p50: a.w_cold_p50,
+        w_cold_min: a.w_cold_min,
+        w_cold_max: a.w_cold_max,
         init_p50: a.init_p50,
         cold_duration_p50: a.cold_dur_p50,
         warm_rtt_p50: a.warm_rtt_p50,
+        w_warm_p50: a.w_warm_p50,
+        w_warm_min: a.w_warm_min,
+        w_warm_max: a.w_warm_max,
         residual_p50: a.residual_p50,
         residual_min: a.residual_min,
         residual_max: a.residual_max,

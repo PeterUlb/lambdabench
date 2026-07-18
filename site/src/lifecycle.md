@@ -24,7 +24,8 @@ here separates what AWS documents from the observed behavior it rests on.
 <div class="tldr-label">The short version</div>
 
 - **Two of the four cold-start steps are invisible to every metric.** Code download and environment start finish _before_ any `REPORT` clock starts, so they land in no `Init Duration`, no `Duration`, and no CloudWatch function metric. [The hidden steps →](#the-hidden-steps-download-environment-start)
-- **For a `.zip`, that invisible cost grows with package size:** a flat floor of ~${Math.round(dlFloor)} ms up to a few MB, then a near-linear climb (very roughly 4-8 ms/MB) reaching of order a second and up near Lambda's size limit. A container image inverts this, moving the size cost into the _reported_ `Init Duration` instead. [Zip vs container image →](#zip-vs-container-image-where-the-size-cost-lands)
+- **Two adders turn any number on this site into an end-to-end caller wait.** No metric itemizes a "latency excluding network" number (network and Lambda's per-invoke front-end share one un-itemized wall-clock), but for a same-region caller: cold wait ≈ the cold start + the ~100 ms-scale residual + a small front-end lump, and warm wait ≈ the warm duration + the same lump, both adders measured below. [What a caller actually waits through →](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
+- **For a `.zip`, the invisible download+start cost grows with package size:** a flat floor of ~${Math.round(dlFloor)} ms up to a few MB, then a near-linear climb (very roughly 4-8 ms/MB) reaching of order a second and up near Lambda's size limit. A container image inverts this, moving the size cost into the _reported_ `Init Duration` instead. [Zip vs container image →](#zip-vs-container-image-where-the-size-cost-lands)
 - **The Init phase appears to run on boosted, roughly full-vCPU CPU; the handler runs at the configured tier's fraction.** Below ~1.8 GB, setup done _at init_ is effectively subsidized. This is observed, not a documented contract, so [don't build on it →](#inside-the-visible-part-init-runs-on-boosted-cpu).
 - **Where two runtimes do comparable work at comparable speed, _which phase_ they run it in can dominate their cold gap.** Rust and Go (both fast, compiled, near-equal at the raw setup) are the clean example: Rust front-loads SDK/TLS setup into the boosted init while Go defers the identical work to the metered first request, so their several-fold low-memory gap narrows to ~1.3x once both run it at the same CPU (a dated off-matrix probe, not this site's benchmark data; see below). This is a specific eager-vs-lazy story, not a general rule: a gap rooted in the execution model itself (e.g. JVM startup vs a native binary) persists in any phase. [Same work, different phase →](#the-cross-language-consequence-same-work-different-phase)
 - **A crash or timeout re-runs Init, invisibly, on the _next_ invocation.** If a failure ends the runtime process (OOM, timeout, process exit on every runtime tested), the following invocation pays a _suppressed init_ whose duration hides inside its reported `Duration`; a failure the runtime catches (an ordinary handler exception) stays warm. The mapping is runtime-specific at the edges: a Go panic re-inits while a Rust one stays warm, and a Node stack overflow stays warm while it re-inits elsewhere. [When a crash or timeout re-runs Init →](#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)
@@ -147,7 +148,7 @@ The reported `Init Duration` does not fold in steps 1-2; the measured numbers se
 independent of how either diagram (above) labels the boundary. Take `rust/hello` (the row in the next
 section): a trivial Rust binary reports an `Init Duration` of \~${ms(dlHello.init_p50, 1)}, about what an empty `main` plus
 runtime start should cost, yet the caller's wall-clock for the same cold invoke is \~${ms(dlHello.w_cold_p50 - dlHello.warm_rtt_p50)} with the
-network path subtracted out. If download + provisioning were counted inside the reported
+warm round-trip subtracted out. If download + provisioning were counted inside the reported
 `Init Duration`, that init would instead carry the whole wall-clock. Netting the reported `Init` and
 the cold invoke's own `Duration` out of that wall-clock leaves a residual (\~${ms(dlHello.residual_p50)} here, computed
 per-sample rather than by subtracting these medians, see the next section) that, by construction, lands
@@ -195,6 +196,14 @@ provisioning/scheduling remainder that no function-side timing can see. Routine 
 control-plane overhead (auth, throttling) does not inflate this: it is present in both `W_cold` and
 `warm_rtt`, so the subtraction removes it, and only the cold-specific placement work survives.
 
+One thing `warm_rtt` deliberately is **not**: a decomposition of its own two ingredients. The
+network path and Lambda's per-invoke front-end processing (request auth, the throttle/concurrency
+check, routing to the sandbox) share that single caller-side wall-clock, and no service-side metric
+itemizes either, so they stay one lump. The method never needs the split, only that the lump repeats
+identically on cold and warm invokes so it cancels.
+[What a caller actually waits through](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
+below is where that lump stops being subtracted and becomes a cost in its own right.
+
 ```js
 // Value + unit joined with a non-breaking space so a cell never splits
 // "225" from "ms" across two lines.
@@ -240,7 +249,8 @@ display(
         </table>
         <div class="caption">
           Median of ${dl.cells[0]?.n_samples ?? 0} cold samples per row (each
-          followed by ${dl.n_warm_per_sample} warm invokes whose net round-trip
+          followed by ${dl.n_warm_per_sample} warm invokes whose net round-trip,
+          each invoke's wall-clock minus its own handler <code>Duration</code>,
           is <code>warm_rtt</code>); the residual range in parentheses is
           min–max across those cold samples. Each column is the median of that
           term taken independently, and the <code>residual</code> is the median
@@ -280,6 +290,20 @@ The takeaway across all the rows: most of what a caller waits through before the
 fixed environment-provisioning cost, plus a download term that only bites for large packages, and
 none of it appears in any `REPORT` line.
 
+That fixed floor also has an external plausibility anchor. Lambda's execution environments run on
+[Firecracker](https://firecracker-microvm.github.io/), the microVM monitor AWS built for exactly
+this workload, and Firecracker's public
+[specification](https://github.com/firecracker-microvm/firecracker/blob/main/SPECIFICATION.md)
+enforces `<= 125 ms` from the `InstanceStart` API call to the start of the guest's `/sbin/init`,
+the same magnitude as the ~${Math.round(dlFloor)} ms floor measured here. That is corroboration,
+not attribution: the spec's bound holds on specific metal instances with a Firecracker-tuned
+minimal kernel and rootfs, `/sbin/init` is not yet a ready Lambda runtime, the residual also
+carries the download plus a cold-only service remainder (placement/scheduling and any other work
+that runs only on the cold path, such as credential and environment setup; the routine per-invoke
+auth/throttle processing cancels in the subtraction), and Lambda's production boot path (which may
+not even pay a full microVM boot on every cold start) is not publicly specified. The magnitudes
+agree; nothing here establishes the composition.
+
 <div class="warning" label="Illustrative magnitudes, measured outside the matrix">
 
 These come from an off-matrix probe timing a handful of already-deployed functions from a **single
@@ -296,9 +320,135 @@ matrix**, the same way the [cross-language probes](#the-cross-language-consequen
      which writes a run-scoped results/lifecycle-download-start-<run_id>.json (gitignored);
      this page's data loader discovers the newest one at build time. -->
 
+## What a caller actually waits through: two adders on top of this site's numbers
+
+Every number on this site is REPORT-side: a cold start is `init` + the first request's `duration`,
+warm latency is the handler's own `duration`. A caller's wall-clock contains more, and the probe
+above measured exactly the missing pieces. So the practical question, _what a caller should expect
+end to end when network distance doesn't matter_, has a formula that works for **any** cell of the
+matrix (every scenario, language, and memory tier on the [main results](./index)), not just the
+handful of functions probed here:
+
+- **expected cold wait** ≈ the scenario's **cold start** (init + first duration) **+ the
+  residual** (a flat ~${Math.round(dlFloor)} ms for artifacts up to a few MB; size-dependent
+  beyond, next sections) **+ the front-end lump**
+- **expected warm wait** ≈ the scenario's **warm `duration`** **+ the front-end lump**
+
+The **front-end lump** is the `warm RTT` of the table above, read as a cost instead of subtracted
+out: Lambda's per-invoke service processing plus the network transit, the un-itemized wall-clock
+the previous section only needed to cancel.
+That is why no metric, from any vantage, itemizes a "latency excluding network" number. The
+honest version of "network doesn't matter" is a caller in the function's own region: this run's
+lump is ~${ms(feLump)}, the median `warm RTT` across the probed cells (the published runs measure
+it in-region, on Fargate). How much of that is still transit cannot be measured here either, only
+bounded, and the bound is an assumption about AWS's network, not a probe result: AWS documents
+intra-region networking as single-digit-millisecond round-trips even _across_ Availability Zones
+(dedicated metro fiber, AZs up to ~100 km apart; the
+[fault-isolation whitepaper](https://docs.aws.amazon.com/whitepapers/latest/aws-fault-isolation-boundaries/availability-zones.html)),
+and [independent measurements](https://www.bitsand.cloud/posts/cross-az-latencies) put cross-AZ
+round-trips at ~0.5-2 ms in most regions. On that assumption, an in-region lump is an **upper bound
+on the front-end cost, and nearly all of it is service processing**. From a remote client, the
+client→region round-trip goes on top of both expectations, plus a TLS handshake when the connection
+is not pooled.
+
+The residual alone would _under_-count the wait: its construction cancels the lump, which even a
+zero-distance caller still pays. The two adders
+answer different questions: the residual is what being cold costs beyond the REPORT metrics; the
+lump is what invoking costs at all.
+
+The probe also timed the full cold wall-clock, `W_cold`, directly (no formula, just the elapsed
+time around the SDK's `Invoke` call), so the formula can be checked against reality:
+
+```js
+// The front-end lump the formula quotes: the median warm RTT across the probed
+// cells, derived from the SAME probe data the decomposition table renders.
+// The caller-wait fields (w_warm_p50 + the W_cold/W_warm spreads) are
+// guaranteed by the data loader, which refuses to build from an output that
+// predates them. Three rows span the formula's range: the canonical
+// small-artifact cell at the lowest tier, the slow-init managed-runtime
+// bundle, and the fattest zip in the matrix.
+const feLump = median(dl.cells.map((c) => c.warm_rtt_p50));
+const sanity = [
+  ["rust", "hello", 128],
+  ["java", "smithyfull", 512],
+  ["python", "oneclient", 512],
+]
+  .map(([lang, scenario, mem]) =>
+    dl.cells.find(
+      (c) => c.lang === lang && c.scenario === scenario && c.memory_mb === mem,
+    ),
+  )
+  .filter((c) => c !== undefined);
+display(
+  sanity.length === 0
+    ? html`<p class="caption">
+        No reference cells for the formula's sanity check in this probe output
+        (a scoped <code>--only</code> run).
+      </p>`
+    : html`<table class="dlstart">
+          <thead>
+            <tr>
+              <th>scenario</th>
+              <th class="num">mem</th>
+              <th class="num">init + cold dur + residual + front-end</th>
+              <th class="num">= formula</th>
+              <th class="num"><strong>measured cold wait</strong> (W_cold)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sanity.map((c) => {
+              const sum =
+                c.init_p50 +
+                c.cold_duration_p50 +
+                c.residual_p50 +
+                c.warm_rtt_p50;
+              return html`<tr>
+                <td><code>${c.lang}/${c.scenario}</code></td>
+                <td class="num">${c.memory_mb} MB</td>
+                <td class="num">
+                  ${c.init_p50.toFixed(0)} + ${c.cold_duration_p50.toFixed(0)} +
+                  ${c.residual_p50.toFixed(0)} + ${c.warm_rtt_p50.toFixed(0)}
+                </td>
+                <td class="num">${ms(sum)}</td>
+                <td class="num">
+                  <strong>${ms(c.w_cold_p50)}</strong>
+                  <span class="caption"
+                    >(${c.w_cold_min.toFixed(0)}–${c.w_cold_max.toFixed(0)})</span
+                  >
+                </td>
+              </tr>`;
+            })}
+          </tbody>
+        </table>
+        <div class="caption">
+          Each formula term and the measured wait are independent medians of the
+          same ${sanity[0]?.n_samples ?? 0} cold samples (a median is not
+          additive), so formula and measurement agree approximately, not
+          exactly; the range in parentheses is min–max across those samples.
+          Off-matrix probe against deployed functions in ${dl.region}.
+        </div>`,
+);
+```
+
+The warm side checks the same way: on every probed cell the directly measured warm wall-clock
+`W_warm` sits above that cell's front-end lump by just the handler's own `Duration`, a few ms (for
+`rust/hello` @ 128 MB: ${ms(dlHello.w_warm_p50, 1)} <span class="caption">(${dlHello.w_warm_min.toFixed(1)}–${dlHello.w_warm_max.toFixed(1)})</span> measured
+against its own ${ms(dlHello.warm_rtt_p50, 1)} `warm RTT`; the range is min–max across the
+cold samples' warm batches). Every probed handler is trivial on purpose; for a heavier handler the
+expectation really is its own warm `duration` plus the lump, which is the warm half of the formula.
+
+<div class="warning" label="A floor from a same-region caller, not a latency promise">
+
+Both adders and the measured waits are illustrative single-client, single-account magnitudes from
+the same off-matrix probe as the decomposition above: same region, pooled HTTPS connection. The
+cold ranges are wide because cold placement genuinely varies invoke to invoke. Nothing here
+subtracts the network; it is merely small from this vantage.
+
+</div>
+
 ## How far does download scale?
 
-The table above tops out at the matrix's fattest real artifact (~${dlMaxZipMB} MB), right where the download
+The decomposition table above tops out at the matrix's fattest real artifact (~${dlMaxZipMB} MB), right where the download
 term starts to show. To see where it _leads_, a companion probe deploys **synthetic** functions
 padded to 1 / 10 / 50 / 100 / 200 MB (a minimal base plus incompressible filler), measures the
 same residual, and tears them down. It runs **two runtime families** at each size, Python on the
@@ -356,7 +506,7 @@ const dscaleMin = dscaleSizes[0];
 <div class="caption">Two lines per runtime family: the <b>dashed</b> line is the download + start residual (p50, with a min–max band across ${dscale.samples?.[0]?.n_samples ?? 0} cold samples per size), the <b>solid</b> line is the reported <code>Init Duration</code> over the same runs. The dashed residual climbs while the solid <code>Init Duration</code> stays flat. Log-x, at ${dscale.memory_mb} MB / ${dscale.arch}; off-matrix probe in ${dscale.region}.</div>
 
 The shape (for `.zip` archives): a **flat floor of ~${Math.round(dlFloor)} ms up to a few MB** (the same provisioning
-floor the table above shows, measured here by an independent probe, download is lost in it), then,
+floor the decomposition table above shows, measured here by an independent probe, download is lost in it), then,
 once the package grows past that, a **near-linear climb** of very roughly **4-8 ms per MB**, reaching
 of order **a second and up at 200 MB** (the exact slope and endpoint move run to run; this run measured
 Python ~${residSecAt("python", dscaleMax)} s, Rust ~${residSecAt("rust", dscaleMax)} s at ${dscaleMax} MB). Both runtime families show the **same shape**: the flat
@@ -565,7 +715,7 @@ a fixed base-layer floor (≈${(dimg.base_image_bytes_est / 1e6).toFixed(0)} MB 
 ### Memory tier moves neither phase's size cost
 
 Raising the memory tier does not rescue the `.zip` either: its size cost is the _unreported_
-download residual, which the table above shows is flat across tiers, consistent with steps 1-2
+download residual, which the decomposition table above shows is flat across tiers, consistent with steps 1-2
 running before the configured CPU allocation takes effect, so a bigger tier does not shrink it. The image's size cost is the opposite phase, the
 _reported_ init growth, but that runs in the Init phase, which (next section) runs on a boosted,
 roughly full-vCPU allocation regardless of the configured memory tier, so it too is tier-independent.
@@ -792,6 +942,8 @@ crash has a sharper edge, covered on the [SnapStart page](./java-snapstart#a-sna
   the part the `REPORT` line reports. It does **not** include the download + environment-start
   (steps 1-2) measured above; a caller waits through those too, but no function metric exposes them,
   so they are documented here separately rather than folded into the headline number.
+  [What a caller actually waits through](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
+  turns the headline number into an end-to-end expectation with two measured adders.
 - **What a low-tier cold gap reflects.** Every function on this site builds its clients at init in
   each language's idiomatic style, so the published cold starts already embed the placement effect.
   That is representative of well-written handlers, but it means a cold gap at 128 or 256 MB

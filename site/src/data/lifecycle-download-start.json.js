@@ -15,4 +15,30 @@ const input = newestResultsFile({
   envPath: process.env.LAMBDABENCH_LIFECYCLE_DOWNLOAD_START,
 });
 
-process.stdout.write(readFileSync(input, "utf8"));
+const raw = readFileSync(input, "utf8");
+
+// The "What a caller actually waits through" section renders the caller-wait
+// fields (w_warm_p50 + the W_cold/W_warm min-max spreads); an output lacking
+// them comes from an outdated probe binary. Stale data gets the same posture
+// as missing data (see lib/results-input.js): refuse to build rather than
+// publish a placeholder. check-lifecycle-prose.py flags the same condition
+// with the same re-run pointer.
+const waitFields = [
+  "w_warm_p50",
+  "w_cold_min",
+  "w_cold_max",
+  "w_warm_min",
+  "w_warm_max",
+];
+const stale = (JSON.parse(raw).cells ?? []).some((c) =>
+  waitFields.some((f) => !Number.isFinite(c[f])),
+);
+if (stale) {
+  throw new Error(
+    `${input} predates the caller-wait fields (${waitFields.join(", ")}). ` +
+      `Re-run the probe (cargo run -p bencher -- probe download-start) against a ` +
+      `deployed matrix. Refusing to build with stale-schema data.`,
+  );
+}
+
+process.stdout.write(raw);
