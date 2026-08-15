@@ -812,13 +812,25 @@ impl Aws {
     }
 }
 
-/// Retries a `CreateFunction` call while Lambda reports the IAM role as not yet
-/// assumable, then wraps any other (or exhausted) failure as `"creating {name}"`.
-/// A freshly created IAM role is not immediately assumable by Lambda; CreateFunction
-/// validates the role and, on the first deploy after role creation, frequently fails
-/// with `InvalidParameterValue: The role defined for the function cannot be assumed
-/// by Lambda`. The SDK's adaptive retry does not cover that error class, so retry it
-/// here with backoff until IAM propagation catches up.
+/// Retries a `CreateFunction` call while the IAM role is still propagating, then
+/// wraps any other (or exhausted) failure as `"creating {name}"`.
+///
+/// A freshly created IAM role is not immediately visible to everything
+/// `CreateFunction` consults, and the resulting failure takes two shapes, both
+/// `InvalidParameterValueException`:
+///
+/// - Lambda validating the trust policy: `The role defined for the function cannot
+///   be assumed by Lambda`.
+/// - KMS validating the grantee principal: creating a function that has environment
+///   variables makes Lambda call `kms:CreateGrant` for the env-var encryption key,
+///   naming the function's execution-role SESSION (`assumed-role/<role>/<function
+///   name>`) as grantee. KMS rejects that ARN until it sees the role, as
+///   `InvalidArnException: ARN does not refer to a valid principal`, wrapped in
+///   `Lambda was unable to configure access to your environment variables because
+///   the KMS key is invalid for CreateGrant`.
+///
+/// The SDK's adaptive retry does not cover that error class, so retry both here
+/// (30 attempts, 1 s apart) until IAM propagation catches up.
 async fn retry_create_role_propagation<F, Fut>(name: &str, create: F) -> Result<()>
 where
     F: Fn() -> Fut,
@@ -832,20 +844,24 @@ where
             Ok(_) => Ok(()),
             Err(err) => {
                 let svc = err.into_service_error();
-                // Match the role-not-ready error precisely: typed error class
+                // Match the role-not-ready errors precisely: typed error class
                 // first, message substring second. Either signal alone is
                 // fragile (the message can be reworded; the typed class also
                 // covers many unrelated parameter errors), so require both, and
-                // if the typed class matches but the message no longer does,
-                // fall through to surface the error rather than silently
-                // retrying a real bug.
-                let assume_role_not_ready = svc.is_invalid_parameter_value_exception()
-                    && svc
-                        .meta()
-                        .message()
-                        .map(|m| m.contains("cannot be assumed by Lambda"))
-                        .unwrap_or(false);
-                if assume_role_not_ready && attempt < ROLE_PROPAGATION_MAX_ATTEMPTS {
+                // if the typed class matches but neither message does, fall
+                // through to surface the error rather than silently retrying a
+                // real bug.
+                //
+                // The CreateGrant arm requires the principal half of the message
+                // too: the same "invalid for CreateGrant" wrapper also reports a
+                // disabled key or a key policy that denies us, neither of which
+                // propagation fixes.
+                let msg = svc.meta().message().unwrap_or_default();
+                let role_not_ready = svc.is_invalid_parameter_value_exception()
+                    && (msg.contains("cannot be assumed by Lambda")
+                        || (msg.contains("KMS key is invalid for CreateGrant")
+                            && msg.contains("does not refer to a valid principal")));
+                if role_not_ready && attempt < ROLE_PROPAGATION_MAX_ATTEMPTS {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
