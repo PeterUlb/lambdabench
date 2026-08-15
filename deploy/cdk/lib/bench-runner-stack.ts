@@ -1,21 +1,20 @@
+import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
-import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { KMS_TAG_KEY, KMS_TAG_VALUE, RESOURCE_WILDCARD } from "./constants";
 
+/** Repo root, the runner image's Docker build context (deploy/Dockerfile
+ * `COPY . /lambdabench`). Three levels up from deploy/cdk/lib. */
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+
 export interface BenchRunnerStackProps extends cdk.StackProps {
-  /** ECR repo holding the runner image (from EcrStack). */
-  readonly repository: ecr.IRepository;
-  /** Immutable ECR tag of the runner image to pull (e.g. a release date or git
-   * SHA). Pinned at deploy time via the `runnerImageTag` CDK context so a new
-   * runner image is an explicit infra deploy, not a silent `:latest` push. */
-  readonly imageTag: string;
   /** Site origin bucket the publish step syncs into (from SiteStack). */
   readonly siteBucket: s3.IBucket;
   /** Private archive bucket for raw run-* output and probe lifecycle-*.json
@@ -384,11 +383,22 @@ export class BenchRunnerStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // CDK Docker asset: `cdk deploy` builds the image and pushes it to the CDK
+    // bootstrap assets repo, tagged with a content hash of the build context. The
+    // image carries the repo, so that hash identifies which source the task runs.
+    // `.dockerignore` is honored for both the hash and the
+    // staged context, so build output and caches neither bloat the asset nor churn
+    // the hash. The platform is explicit because the task is X86_64 (above) while
+    // the operator's build machine may not be.
     taskDef.addContainer("Runner", {
-      image: ecs.ContainerImage.fromEcrRepository(
-        props.repository,
-        props.imageTag,
-      ),
+      image: ecs.ContainerImage.fromAsset(REPO_ROOT, {
+        file: path.join("deploy", "Dockerfile"),
+        platform: Platform.LINUX_AMD64,
+        // Already the v2 default (via the dockerIgnoreSupport feature flag), set
+        // explicitly so `.dockerignore` keeps docker's own semantics if that flag
+        // is ever turned off, which would silently fall back to glob.
+        ignoreMode: cdk.IgnoreMode.DOCKER,
+      }),
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: "lambdabench-runner",
         logGroup,

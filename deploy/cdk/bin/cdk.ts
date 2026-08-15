@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 // Entry point for the LambdaBench hosting + benchmark-runner infrastructure.
 //
-// Four stacks. The site, ECR, and runner are pinned to eu-central-1 (colocated
-// with the benchmark's own resources, which bencher/src/config.rs hardcodes to
-// that region). EdgeStack is pinned to us-east-1 because CloudFront only
-// consumes ACM certificates and CLOUDFRONT-scoped WAF Web ACLs from there.
+// Three stacks. The site and runner are pinned to eu-central-1 (colocated with
+// the benchmark's own resources, which bencher/src/config.rs hardcodes to that
+// region). EdgeStack is pinned to us-east-1 because CloudFront only consumes
+// ACM certificates and CLOUDFRONT-scoped WAF Web ACLs from there.
 //   - EdgeStack:        us-east-1 ACM certificate + CLOUDFRONT WAF Web ACL,
 //                       referenced cross-region by SiteStack.
 //   - SiteStack:        long-lived static-hosting infra (private S3 origin +
 //                       CloudFront via OAC + Route 53 ALIAS).
-//   - EcrStack:         private ECR repo holding the benchmark-runner image.
 //   - BenchRunnerStack: on-demand ECS Fargate task that builds/deploys/runs
 //                       the benchmark, then rebuilds and publishes the site.
+//                       Its image is a CDK Docker asset (deploy/Dockerfile),
+//                       so `cdk deploy` builds and pushes it.
 //
 // The CloudFront flat-rate plan subscription is the only piece not modelled here:
 // the API exists (CloudTrail records CreateSubscription against
@@ -22,7 +23,6 @@
 // revisit once a service model ships.
 import * as cdk from "aws-cdk-lib";
 import { SiteStack } from "../lib/site-stack";
-import { EcrStack } from "../lib/ecr-stack";
 import { BenchRunnerStack } from "../lib/bench-runner-stack";
 import { EdgeStack } from "../lib/edge-stack";
 
@@ -42,12 +42,6 @@ const env: cdk.Environment = {
 // Required deploy-time context (pass via `cdk deploy -c key=value` or cdk.context.json):
 //   siteDomain      - apex domain the site is served on, e.g. "bench.example.com".
 //   hostedZoneId    - id of the existing Route 53 hosted zone for that domain.
-//   runnerImageTag  - immutable ECR tag of the runner image the Fargate task pulls
-//                     (e.g. "v20260625", a git SHA, or a release date). The repo is
-//                     immutable, so each new build pushes a new tag and bumps this
-//                     context value plus a CDK redeploy. Falls back to "bootstrap"
-//                     on a first deploy (named so, not "latest", since an immutable
-//                     tag is write-once, never a moving pointer).
 //   repoUrl         - public source-repo URL (e.g. "https://github.com/you/lambdabench").
 //                     Injected as LAMBDABENCH_REPO_URL so the published site links the
 //                     footer's "Source on GitHub".
@@ -63,9 +57,6 @@ const hostedZoneId = app.node.tryGetContext("hostedZoneId") as
 const repoUrl = app.node.tryGetContext("repoUrl") as string | undefined;
 const contactEmail = app.node.tryGetContext("contactEmail") as
   string | undefined;
-const runnerImageTag =
-  (app.node.tryGetContext("runnerImageTag") as string | undefined) ??
-  "bootstrap";
 
 if (!siteDomain) {
   throw new Error(
@@ -82,18 +73,6 @@ if (!repoUrl) {
     "repoUrl is required (pass via `-c repoUrl=https://github.com/you/lambdabench`).",
   );
 }
-// `bootstrap` is the documented first-deploy default (not `latest`: the ECR repo
-// is immutable, so a tag is write-once and `latest` would falsely imply a moving
-// pointer). Warn rather than throw so the bootstrap path works, but nudge toward a
-// pinned tag.
-if (runnerImageTag === "bootstrap") {
-  console.warn(
-    "runnerImageTag=bootstrap: first-deploy default. The ECR repo is immutable, so this " +
-      "tag can be pushed only once; pass an immutable tag (e.g. a git SHA or release date) " +
-      "via `-c runnerImageTag=<tag>` for real deploys.",
-  );
-}
-
 // CloudFront only accepts ACM certificates and CLOUDFRONT-scoped WAF Web ACLs
 // from us-east-1, so the cert and ACL live in their own stack pinned there
 // and are consumed cross-region by SiteStack. See:
@@ -118,15 +97,8 @@ const siteStack = new SiteStack(app, "LambdaBenchSiteStack", {
     "LambdaBench static site: private S3 origin + CloudFront (OAC) + Route 53 ALIAS.",
 });
 
-const ecr = new EcrStack(app, "LambdaBenchEcrStack", {
-  env,
-  description: "LambdaBench benchmark-runner container image repository.",
-});
-
 new BenchRunnerStack(app, "LambdaBenchRunnerStack", {
   env,
-  repository: ecr.repository,
-  imageTag: runnerImageTag,
   siteBucket: siteStack.bucket,
   archiveBucket: siteStack.archiveBucket,
   distribution: siteStack.distribution,

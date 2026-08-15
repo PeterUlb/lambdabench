@@ -13,8 +13,8 @@ Two independent lifecycles:
    runs the benchmark, tears them down, then rebuilds the static site from the fresh run
    and publishes it. Nothing benchmark-related runs between runs.
 
-The site bucket, runner, and ECR repo live in **eu-central-1** (Frankfurt), matching the region
-the benchmark itself hardcodes in `bencher/src/config.rs`. The ACM certificate and the
+The site bucket, the runner, and its container image asset live in **eu-central-1** (Frankfurt),
+matching the region the benchmark itself hardcodes in `bencher/src/config.rs`. The ACM certificate and the
 CLOUDFRONT-scoped WAF Web ACL live in **us-east-1** because CloudFront only consumes them from
 there; SiteStack references both cross-region.
 
@@ -41,9 +41,9 @@ there; SiteStack references both cross-region.
 ## Why these choices
 
 - **CloudFront flat-rate Free plan** ($0/mo) covers one distribution + one apex domain, Route 53
-  DNS, WAF, DDoS protection, serverless edge compute, and a 5 GB S3 storage credit. The site is
-  ~10 MB and serves well under the 100 GB transfer / 1M request monthly allowance, so the Free
-  tier is comfortable. (Note: AWS *Free Tier* promotional accounts cannot subscribe to flat-rate
+  DNS, WAF, DDoS protection, serverless edge compute, and a 5 GB S3 storage credit. The built site
+  is a few MB (~3 MB, of which `stats.json` is the bulk) and serves well under the 100 GB transfer /
+  1M request monthly allowance, so the Free tier is comfortable. (Note: AWS _Free Tier_ promotional accounts cannot subscribe to flat-rate
   plans; a standard paid account is required.)
 - **TLS cert and WAF Web ACL are CDK-managed.** The plan also offers a plan-issued TLS cert and an
   auto-created WAF, but those resources sit outside CloudFormation: the next `cdk deploy` reconciles
@@ -52,7 +52,7 @@ there; SiteStack references both cross-region.
   requires them) and bind both to the distribution at synth time. The Web ACL mirrors the rule set
   the plan would attach by default.
 - **The plan subscription itself is not modelled in IaC, and can't be a custom resource yet.** The
-  underlying API *does* exist (CloudTrail records a real `CreateSubscription` call:
+  underlying API _does_ exist (CloudTrail records a real `CreateSubscription` call:
   `eventSource: pricingplanmanager.amazonaws.com`, `readOnly: false`, with `planName`/`planTier`/
   `resourceArns` request params), but it has **no published SDK/CLI service model**. As of boto3 1.43.36
   (verify against the current release): there is no `pricingplanmanager` (or `pricing-plan-manager` /
@@ -74,22 +74,25 @@ there; SiteStack references both cross-region.
 
 ## Layout
 
-| Path               | What it is                                                               |
-|--------------------|--------------------------------------------------------------------------|
-| `cdk/`             | CDK app: `EdgeStack`, `SiteStack`, `EcrStack`, `BenchRunnerStack`.       |
-| `Dockerfile`       | Benchmark-runner image (full toolchain + awscli). Built for linux/amd64. |
-| `run-benchmark.sh` | Container entrypoint: the full pipeline + site publish.                  |
-| `run.sh`           | Launch one on-demand run via `aws ecs run-task`.                         |
+| Path               | What it is                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `cdk/`             | CDK app: `EdgeStack`, `SiteStack`, `BenchRunnerStack`.                                                      |
+| `Dockerfile`       | Benchmark-runner image (full toolchain + awscli). Built by `cdk deploy` as a Docker asset, for linux/amd64. |
+| `run-benchmark.sh` | Container entrypoint: the full pipeline + site publish.                                                     |
+| `run.sh`           | Launch one on-demand run via `aws ecs run-task`.                                                            |
 
 ## One-time setup
 
-Prerequisites: AWS CLI v2 + Docker, credentials for the target account, Node 20+ for CDK.
+Prerequisites: AWS CLI v2 + Docker (running: `cdk deploy` builds the runner image), credentials for
+the target account, Node 20+ for CDK.
 
 ### 1. Create the Route 53 hosted zone (console)
+
 Create a public hosted zone for your domain in the Route 53 console and point your registrar's
 nameservers at it. Note the **Hosted Zone ID** and the **domain name**.
 
 ### 2. Deploy the infrastructure (CDK)
+
 ```sh
 cd deploy/cdk
 npm install
@@ -104,17 +107,22 @@ npx cdk deploy --all \
 #   injected as LAMBDABENCH_CONTACT_EMAIL so the published site shows a "Contact"
 #   mailto footer link. Omit and the link is absent.
 ```
+
 This creates the us-east-1 ACM certificate and CLOUDFRONT WAF Web ACL (`EdgeStack`), the
 private site bucket, the CloudFront distribution wired to the apex domain + cert + Web ACL,
-the Route 53 ALIAS record, the ECR repo, and the Fargate cluster + task definition. ACM
-validation is via DNS in the existing hosted zone, so the cert issues automatically once the
-registrar's nameservers point at the Route 53 zone; if they don't yet, `EdgeStack` will block
-on the DNS-01 challenge until they do.
-Note the stack outputs (`SiteBucketName`, `ArchiveBucketName`, `DistributionId`, `DistributionDomainName`, `RunnerRepoUri`).
+the Route 53 ALIAS record, and the Fargate cluster + task definition. It also builds the
+runner image from `deploy/Dockerfile` and pushes it (see "The runner image" below), so the
+first deploy takes as long as a full toolchain build. ACM validation is via DNS in the
+existing hosted zone, so the cert issues automatically once the registrar's nameservers point
+at the Route 53 zone; if they don't yet, `EdgeStack` will block on the DNS-01 challenge until
+they do.
+Note the stack outputs (`SiteBucketName`, `ArchiveBucketName`, `DistributionId`, `DistributionDomainName`).
 
 ### 3. Subscribe the distribution to the flat-rate plan (console)
+
 The plan subscription is the only step that can't be expressed in CDK today (see "Why these
 choices" above). In the [CloudFront v4 console](https://console.aws.amazon.com/cloudfront/v4/home):
+
 1. Open the distribution → its billing should read **Pay-as-you-go**. Click **Switch to a plan**,
    pick **Free**, and confirm. Billing then reads **Free plan ($0/month)**.
 2. Click **Manage plan** and confirm the Route 53 hosted zone is attached (it should appear
@@ -126,43 +134,48 @@ choices" above). In the [CloudFront v4 console](https://console.aws.amazon.com/c
 The CDK-managed cert and Web ACL satisfy the plan's domain + WAF requirements, so no further
 clicks are needed and nothing the plan adds drifts from CloudFormation.
 
-## Build and push the runner image (immutable tag)
+## The runner image
 
-Required once before the first benchmark run, and again whenever the runner
-code or `Dockerfile` changes (toolchain bumps, new dependencies, entrypoint
-edits). Steady-state benchmark runs reuse the last pushed image without
-rebuilding.
+There is no separate build-and-push step. The runner image is a **CDK Docker asset**:
+`cdk deploy` builds `deploy/Dockerfile` with the repo root as its build context, pushes it to
+the CDK bootstrap assets repository (`cdk-hnb659fds-container-assets-<account>-<region>`, created
+by `cdk bootstrap`), and wires the resulting URI into the Fargate task definition.
 
-The ECR repository is configured with `imageTagMutability: IMMUTABLE`, so a tag
-once pushed cannot be overwritten. Each new image must use a unique tag (a date,
-a git SHA, or a release version), and the runner stack pins the exact tag the
-Fargate task pulls, so a new runner image is an explicit `cdk deploy`, not a
-silent `:latest` push.
+The tag CDK assigns is a **content hash of the build context**:
 
-```sh
-cd deploy
-REPO_URI=<RunnerRepoUri from step 2>
-TAG=v$(date -u +%Y%m%d)        # or a git SHA: TAG=$(git rev-parse --short HEAD)
-aws ecr get-login-password --region eu-central-1 \
-  | docker login --username AWS --password-stdin "${REPO_URI%/*}"
-docker build --platform linux/amd64 -f Dockerfile -t "$REPO_URI:$TAG" ..
-docker push "$REPO_URI:$TAG"
-```
+- The image carries the repo (`COPY . /lambdabench`), so the hash identifies which source the
+  Fargate task runs.
+- A source change produces a different hash, so it cannot overwrite the previous image. The
+  bootstrap assets repo is `IMMUTABLE`.
+- The task moves to a new image only when a `cdk deploy` pushes one.
+- `.dockerignore` at the repo root is honored for both the hash and the staged context, so build
+  output and caches neither bloat the asset (~3.6 MB staged) nor churn the hash.
 
-Then redeploy the runner stack so the Fargate task picks up the new tag:
+Rebuilds are incremental: Docker layer caching means a source-only change re-runs just the final
+`COPY`, and only that layer is pushed. The toolchain layers rebuild when the `Dockerfile` changes.
+`cdk deploy` still needs Docker running, and the image is built for `linux/amd64` explicitly
+(`platform: Platform.LINUX_AMD64`) because the task definition is `X86_64`, so an arm64 machine
+would otherwise produce an image the task cannot start.
 
-```sh
-cd deploy/cdk
-npx cdk deploy LambdaBenchRunnerStack \
-  -c siteDomain=bench.example.com \
-  -c hostedZoneId=Z0123456789ABCDEFGHIJ \
-  -c repoUrl=https://github.com/you/lambdabench \
-  -c runnerImageTag=$TAG
-# optional: -c contactEmail=you@example.com (see step 2 for what it injects)
-```
+The bootstrap assets repo's only lifecycle rule expires _untagged_ images after a year, and every
+asset image is tagged, so old runner images are never reclaimed automatically: each `cdk deploy`
+from changed source leaves the previous full-toolchain image behind. Delete them by hand when the
+repo grows.
 
-(The `siteDomain`/`hostedZoneId`/`repoUrl` context is preserved across deploys; pass
-`runnerImageTag` whenever the image moves.)
+### Deploy-time context
+
+Context is **not** carried over between deploys: `-c` values live only in the invoking
+process, and nothing writes them to `cdk.json` or `cdk.context.json` (that file caches
+lookup-provider results, like the ECS VPC, and is gitignored). Every `cdk deploy` must
+repeat the full set. Omitting one is not equally loud:
+
+| Omitted                                 | Result                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------- |
+| `siteDomain`, `hostedZoneId`, `repoUrl` | Throws at synth before any AWS call.                                      |
+| `contactEmail`                          | No error; the next published site simply drops the "Contact" footer link. |
+
+To avoid retyping them, either add your values to the `context` block of `cdk.json`
+(they're public config, not secrets) or wrap the invocation in a shell alias/script.
 
 ## Running the benchmark + publishing
 
@@ -170,6 +183,7 @@ npx cdk deploy LambdaBenchRunnerStack \
 deploy/run.sh                    # launch one hours-long run, then auto-publish the site
 KEEP_RESOURCES=1 deploy/run.sh   # leave the function matrix deployed after the run
 ```
+
 Follow progress in the CloudWatch log group `/lambdabench/runner` (stream prefix `lambdabench-runner`).
 The task runs the pipeline in the diagram above, then exits. Three operational notes the diagram
 can't show:

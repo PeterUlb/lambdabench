@@ -2,7 +2,6 @@ import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { EdgeStack } from "../lib/edge-stack";
 import { SiteStack } from "../lib/site-stack";
-import { EcrStack } from "../lib/ecr-stack";
 import { BenchRunnerStack } from "../lib/bench-runner-stack";
 
 // Locks the IAM posture of the benchmark runner. The runner must create the
@@ -56,11 +55,8 @@ describe("BenchRunnerStack IAM posture", () => {
     certificate: edge.certificate,
     webAcl: edge.webAcl,
   });
-  const ecr = new EcrStack(app, "TestEcrStack", { env: { account, region } });
   const runner = new BenchRunnerStack(app, "TestRunnerStack", {
     env: { account, region },
-    repository: ecr.repository,
-    imageTag: "testtag",
     siteBucket: site.bucket,
     archiveBucket: site.archiveBucket,
     distribution: site.distribution,
