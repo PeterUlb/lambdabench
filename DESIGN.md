@@ -1,11 +1,9 @@
 # Design guide: invariants, rationale, and how to add a scenario
 
-This is the **contributor-facing design guide**: the non-obvious decisions behind
-the benchmark, the rules that keep the comparison fair and the data trustworthy,
-*why* each one matters, and a checklist for
-adding a new scenario without silently breaking them. For *what each scenario is*,
-see the scenario tables in [README.md](README.md); this file is the *why* behind
-them and the rules an edit must not break.
+The non-obvious decisions behind the benchmark, the rules that keep the
+comparison fair and the data trustworthy, and a checklist for adding a new
+scenario without silently breaking them. For *what each scenario is*, see the
+scenario tables in [README.md](README.md).
 
 If you are adding/editing a scenario: **read the Invariants
 first.** Most of them are not enforced by the compiler, it is entirely possible
@@ -21,9 +19,9 @@ and **CPU probes** (`lettercount`, `authz`, `batch`, `cache`), read on warm
 latency. The **[README Scenarios section](README.md#scenarios)** describes what each
 one is and how to read it (handler shapes are not a linear ladder, so compare each
 to its *related* shape rather than subtracting across the set; CPU probes isolate
-*where the CPU time goes*). That reader-facing description is not repeated here.
-This section records only the *design intent* an edit must preserve; measured
-results live in the run data and the README "Finding" sections, never here.
+*where the CPU time goes*). This section records only the *design intent* an edit
+must preserve; measured results live in the run data and the README "Finding"
+sections, never here.
 
 **The `batch`/`cache` pair is deliberate, keep them separate.** Both stress
 allocation, but `batch` isolates the *parser* (transient garbage, freed each invoke,
@@ -63,7 +61,7 @@ README Findings):
    made to do the *same* thing, it is not a fair scenario. (One structural
    exception: **Python and Go skip the two Smithy scenarios**, because neither
    ecosystem has a server SDK that could host the shared `restJson1` service
-   doing the *same* (de)serialization work — the README
+   doing the *same* (de)serialization work; the README
    [Matrix](README.md#matrix) section has the full per-ecosystem rationale.
    `Lang::supports` encodes this, and those Python/Go cells are never
    generated.)
@@ -168,7 +166,7 @@ README Findings):
    - **Exception:** the *driver's* own client (`bencher/src/aws.rs`) keeps
      `RetryConfig::adaptive()`. That retries the cold-force *mechanism* (control-
      plane Updates/polls), which does not corrupt data: it just lands the cold
-     start. Different layer, different rule.
+     start.
 
 2. **Big payloads load at init; small inputs come in the invoke payload.**
    - `lettercount` fetches its ~1 MB blob from S3 **once at init**: embedding it
@@ -237,7 +235,7 @@ README Findings):
    [Matrix](README.md#matrix) SnapStart bullet is the reader-facing statement
    of both rules, and its function-count bullets enumerate every floor with the
    OOM/CPU-starvation reason behind each. The cross-language summary/ranking
-   intersect over shared cells, so those holes simply don't contribute there.
+   intersect over shared cells, so those holes don't contribute there.
    Only its per-cell cold-cycle count is reduced (`SNAPSTART_COLD_CYCLES`),
    since each cold sample publishes a fresh snapshot.
 8. **Why primed, not unprimed:** the benchmark measures the end-user experience,
@@ -257,9 +255,7 @@ README Findings):
     entrypoint they would.** A prime is honest only if it reproduces a config
     a real operator could ship, so each primed handler calls its OWN public
     handler entrypoint once in `beforeCheckpoint`, never a framework-internal
-    path the operator has no supported access to. A prime that reaches past the
-    public API to flatter the numbers is as much a methodology bug as no prime
-    at all.
+    path the operator has no supported access to.
     - PRIMED (an SDK first-call cost the operator can hoist via the public
       entrypoint): `oneclient`, `threeclient`, `smithyfull` (each warms its AWS
       SDK client graph by calling its operation/handler once), `authz` (calls its
@@ -396,7 +392,7 @@ three ways, one per surface:
    download-scaling chart) in prose, because those cannot come from `stats.json`.
    That is the primary drift surface, and it is guarded by
    `scripts/check-lifecycle-prose.py`, which asserts the key claims (the
-   provisioning floor, the 200 MB residual, the ~4-8 ms/MB slope, the two runtime
+   provisioning floor, the 200 MB residual, the ~3-8 ms/MB slope, the two runtime
    families tracking) still hold against the freshly-produced probe JSONs (it
    discovers the newest `results/lifecycle-*` the same way the site loaders do),
    with generous tolerances that catch a real platform shift rather than run noise.
@@ -417,7 +413,7 @@ three ways, one per surface:
    sequence to populate densely and to let the GC reach its steady-state cadence.
    `batch` runs `15 cold × 200 warm`: its GC pressure is per-invoke (every warm
    invoke parses the whole ~16 MB batch), so it does not need a high warm count.
-   (Memory floors — which tiers a scenario/runtime pair skips, and why — are
+   (Memory floors, which tiers a scenario/runtime pair skips and why, are
    enumerated once, in the README [Matrix](README.md#matrix) section.) The light
    scenarios run `50 cold × 50 warm` (`FULL_LIGHT_COUNTS`). All of the above is the
    `full` profile; `--profile smoke` instead runs a tiny flat count over every cell

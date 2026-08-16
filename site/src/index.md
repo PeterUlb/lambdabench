@@ -34,7 +34,7 @@ const cm = colorModel(
 <div class="hero">
 <div class="eyebrow">AWS Lambda · cold &amp; warm · scenario benchmark</div>
 
-# AWS Lambda Runtime Benchmark: cold start, warm latency, memory & arm64
+# AWS Lambda runtime benchmark: cold start, warm latency, memory & arm64
 
 ```js
 // Languages rendered in their series color (Rust orange, Node teal, …) as a
@@ -103,7 +103,7 @@ display(
 ```
 
 <div class="cold-caveat">
-<strong>Every cold-start number on this site is a floor, not the full wait.</strong> The reported cold figure is <code>init</code> (or SnapStart <code>Restore</code>) + the first request's <code>Duration</code>, which is all a <code>REPORT</code> line exposes. <b>Before</b> that clock even starts, the caller also waits through <b>code download + execution-environment setup</b>, latency that appears in <em>no</em> function metric: a roughly constant floor for small packages, growing to <b>a couple hundred ms</b> for the larger packages here, and to <b>of order a second</b> near Lambda's size limit. So the true cold start a caller feels is these numbers <b>plus</b> an unreported term. <a href="./lifecycle#the-hidden-steps-download-environment-start">Cold Start Anatomy measures it →</a>
+<strong>Every cold-start number on this site is a floor, not the full wait.</strong> The reported cold figure is <code>init</code> (or SnapStart <code>Restore</code>) + the first request's <code>Duration</code>, which is all a <code>REPORT</code> line exposes. Before that clock even starts, the caller also waits through <b>code download + execution-environment setup</b>, latency that appears in <em>no</em> function metric: a roughly constant floor for small packages, growing to a couple hundred ms for the larger packages here, and to of order a second near Lambda's size limit. <a href="./lifecycle#the-hidden-steps-download-environment-start">Cold Start Anatomy measures it →</a>
 </div>
 
 <details class="scenarios">
@@ -158,7 +158,7 @@ display(C.coldVsMemory(v));
 display(headToHead(v));
 ```
 
-<div class="chart-sub read-me"><strong>Reading the cold spread:</strong> a large cold gap at low memory tiers is partly a <em>lifecycle</em> effect, not only a speed contest. The Lambda Init phase appears to run on boosted CPU, so runtimes that run their setup eagerly at init (e.g. Rust) collect that subsidy, while lazier ones (e.g. Go) defer the same work into the first request, at the memory tier's ordinary, much smaller CPU allocation; put Rust and Go on equal footing and <em>their</em> several-fold low-memory gap narrows to about 1.3x (rough context from a dated off-matrix probe, not this site's benchmark data) — a lifecycle-timing story specific to two runtimes with comparable raw speed, not a general rule that doing everything eagerly erases every cold gap. <a href="./lifecycle">Cold Start Anatomy →</a> explains the mechanism, what AWS does and doesn't document about it, and how to read these numbers because of it.</div>
+<div class="chart-sub read-me"><strong>Reading the cold spread:</strong> a large cold gap at low memory tiers is partly a <em>lifecycle</em> effect, not only a speed contest. The Lambda Init phase appears to run on boosted CPU, so runtimes that run their setup eagerly at init (e.g. Rust) collect that subsidy, while lazier ones (e.g. Go) defer the same work into the first request, at the memory tier's ordinary, much smaller CPU allocation; put Rust and Go on equal footing and <em>their</em> several-fold low-memory gap narrows to about 1.3x (rough context from a dated off-matrix probe, not this site's benchmark data). That is a lifecycle-timing story specific to two runtimes with comparable raw speed, not a general rule that doing everything eagerly erases every cold gap. <a href="./lifecycle">Cold Start Anatomy →</a> explains the mechanism, what AWS does and doesn't document about it, and how to read these numbers because of it.</div>
 
 <div class="caption">Cold percentiles rest on few samples (one per cold cycle, and most warm-axis CPU scenarios run fewer cold cycles than that), so the cold tail is reported as P90 (the same P10–P90 band the chart above shades) rather than a P99 that would sit on under one tail sample. The warm P99 passes the raw n&ge;${MIN_N_FOR_P99} gate but warm samples within a cold cycle are correlated, so read it as a cross-cell comparison; the <a href="./appendix">data appendix</a> carries the full statistical note and the exact per-cell sample counts (n) behind each phase.</div>
 

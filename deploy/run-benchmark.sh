@@ -15,11 +15,11 @@
 #   ARCHIVE_BUCKET      - private S3 bucket for raw run-* archives (no public origin)
 #   DISTRIBUTION_ID     - CloudFront distribution to invalidate after publish
 #   LAMBDABENCH_SITE_DOMAIN  - apex domain baked into canonical/OG/sitemap URLs
+#   LAMBDABENCH_REPO_URL     - public source-repo URL the footer's "Source on GitHub"
+#                         link points to (inherited by npm run build, which
+#                         throws without it)
 # Optional:
 #   KEEP_RESOURCES      - if "1", skip teardown (leave the function matrix deployed)
-#   LAMBDABENCH_REPO_URL     - public source-repo URL; if set, the footer links "Source
-#                         on GitHub", else it shows "(coming soon)" (inherited by
-#                         npm run build)
 #   LAMBDABENCH_CONTACT_EMAIL - contact email; if set, the built site shows a
 #                         "Contact" mailto footer link (inherited by npm run build)
 set -euo pipefail
@@ -28,6 +28,9 @@ set -euo pipefail
 : "${ARCHIVE_BUCKET:?ARCHIVE_BUCKET must be set}"
 : "${DISTRIBUTION_ID:?DISTRIBUTION_ID must be set}"
 : "${LAMBDABENCH_SITE_DOMAIN:?LAMBDABENCH_SITE_DOMAIN must be set}"
+# Checked here rather than at the site build in step [8]: that runs after the
+# hours-long matrix run, and the config throws on a missing value.
+: "${LAMBDABENCH_REPO_URL:?LAMBDABENCH_REPO_URL must be set}"
 
 cd /lambdabench
 
@@ -75,7 +78,7 @@ trap teardown_on_exit EXIT
 
 # `run` owns the whole pipeline: it builds the artifacts and deploys the
 # function matrix (both scoped to the cells it will invoke) before running, so there is
-# no separate build/deploy step here - that would recompile and re-upload the same
+# no separate build/deploy step here; that would recompile and re-upload the same
 # artifacts for nothing. A build or deploy failure still aborts before the run.
 # No --profile flag: the publish pipeline runs the default `full` profile (the
 # published methodology). Per-cell sample counts vary by scenario and dimension
@@ -89,8 +92,7 @@ cargo run --release -p bencher -- run
 # pipeline's primary, hours-long product; the probes that follow drive repeated
 # control-plane cold-forces and can fail, and the site build after them can fail
 # too. Archiving the raw run here (rather than only at the end) means neither a
-# probe hiccup nor a build failure can lose it: the run is preserved the moment it
-# completes, decoupled from everything downstream. The probe outputs are archived
+# probe hiccup nor a build failure can lose it. The probe outputs are archived
 # separately at step [7], after they are produced. The matrix functions stay
 # deployed for the probes (teardown is on the EXIT trap, which has not fired yet).
 echo "== [3/8] archive matrix run: copy raw results/run-* to s3://$ARCHIVE_BUCKET/ =="
@@ -111,7 +113,7 @@ aws s3 cp results/ "s3://$ARCHIVE_BUCKET/" --region "$REGION" \
 # abort): a warning here names WHICH probe failed. There is no committed fallback,
 # so if this probe produces no output the site build (step [8]) fails loud at the
 # loader and nothing publishes; the live site keeps serving the previous publish,
-# and the matrix run is already archived (step [3]). The probe itself now retries
+# and the matrix run is already archived (step [3]). The probe itself retries
 # a transient per-cell failure (bencher probe::retry_transient), so a one-off
 # control-plane blip does not reach this warning.
 echo "== [4/8] probe download-start: pre-Init download+start (in-region) -> results/lifecycle-download-start-<id>.json =="
@@ -143,7 +145,7 @@ if ! cargo run --release -p bencher -- probe download-scaling --with-image; then
 fi
 
 # Guard the hand-written Cold Start Anatomy prose against data drift: assert the
-# key lifecycle.md claims (provisioning floor, 200 MB residual, ~4-8 ms/MB
+# key lifecycle.md claims (provisioning floor, 200 MB residual, ~3-8 ms/MB
 # slope, runtime families tracking, image init-climb / flat-residual / crossover)
 # still hold against the three JSONs the probes just refreshed. Most exact ms on
 # the page are derived from those JSONs at build time, but the qualitative shape

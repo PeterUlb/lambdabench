@@ -6,10 +6,10 @@
 //! download+prepare cold-start cost of an image against a zip at the same padded
 //! sizes. This module owns everything AWS-side about the image itself: the
 //! private ECR repository the images are pushed to, reading back the true pushed
-//! size, and teardown. The image assembly + push (`crane mutate`, the only
-//! shell-out in the tool) lives in `probe.rs`, since it is a build step, not an
-//! AWS SDK call. crane is daemonless, so this path runs unattended in the ECS
-//! Fargate publish task (no Docker/finch VM).
+//! size, and teardown. The image assembly + push (`crane mutate`) lives in
+//! `probe.rs`, since it is a build step, not an AWS SDK call. crane is
+//! daemonless, so this path runs unattended in the ECS Fargate publish task (no
+//! Docker/finch VM).
 //!
 //! The repository carries the `lambdabench-` stem for consistency with the other
 //! benchmark resources, but teardown reclaims it by exact name
@@ -250,7 +250,7 @@ mod tests {
 
     /// The repo name carries the `lambdabench-` stem for consistency with every
     /// other benchmark resource. Teardown reclaims it by exact name, not prefix
-    /// match, but the shared stem keeps the naming uniform.
+    /// match.
     #[test]
     fn ecr_repo_carries_resource_prefix() {
         assert!(ECR_REPO.starts_with(RESOURCE_PREFIX));

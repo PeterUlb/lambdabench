@@ -214,8 +214,8 @@ fn build_rust(repo_root: &Path, dist: &Path, key: &ArtifactKey) -> Result<Artifa
 
     let opt = key.opt.unwrap_or(crate::config::Opt::O3);
     // Every Rust artifact key carries a Jitter; `all_cells` populates it for
-    // every Rust cell. Make the invariant explicit: a Rust build with no
-    // jitter dimension is a bug, not a default to silently fill in.
+    // every Rust cell. A Rust build with no jitter dimension is a bug, not a
+    // default to silently fill in.
     let jitter = key
         .jitter
         .expect("rust artifact key must carry a Jitter dimension");
@@ -226,7 +226,7 @@ fn build_rust(repo_root: &Path, dist: &Path, key: &ArtifactKey) -> Result<Artifa
     // would let a rebuild for one clobber the other's `aws-lc-sys` objects and ship
     // the wrong build. opt-level IS in cargo's fingerprint, so it needs no separate
     // dir for correctness; keeping one per opt-level anyway avoids churning a shared
-    // cache on every opt switch, for fast incremental rebuilds.
+    // cache on every opt switch.
     let dir_tag = match jitter {
         Jitter::Off => opt.as_str().to_string(),
         Jitter::On => format!("{}-jitter", opt.as_str()),
@@ -648,7 +648,7 @@ fn gradle_codegen(project_dir: &Path, task: &str) -> Result<()> {
 /// given tasks, in plain-console mode. Every gradle project here (the Java
 /// artifact build and the Rust/Node Smithy codegen) runs a Gradle 9.x wrapper on
 /// whatever JDK is on PATH (JDK 25 both on a dev Mac and in the runner
-/// container), so no JAVA_HOME juggling is needed - this is the single entry
+/// container), so no JAVA_HOME juggling is needed. This is the single entry
 /// point for invoking gradle.
 fn run_gradle(project_dir: &Path, tasks: &[String], what: &str) -> Result<()> {
     let mut cmd = Command::new("./gradlew");

@@ -20,8 +20,8 @@
 //! GC cycle expensive, the path `batch` never reaches (its object graph is
 //! transient and Go's compact representation stays far from the ceiling). At the
 //! smaller fractional-vCPU tiers a concurrent collector cannot run on a spare core
-//! and steals time from the handler, so the warm P99/P99.9 tail blows up while the
-//! median stays flat, worst at the starved low-memory tiers and easing as vCPU
+//! and steals time from the handler, so the warm P99/P99.9 tail opens up while the
+//! median stays flatter, worst at the starved low-memory tiers and easing as vCPU
 //! grows. A non-GC runtime frees each replaced buffer immediately, so its tail
 //! stays flat at every tier. Read the absolute tail latencies on the dashboard,
 //! not a P99/P50 ratio.

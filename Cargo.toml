@@ -17,12 +17,12 @@ members = [
 exclude = ["scenarios/rust/smithy", "scenarios/rust/smithyfull", ".tmp"]
 
 # Left at Cargo's defaults on purpose. `release` covers the whole workspace,
-# including the `bencher` driver (built via `cargo run --release`) -- and bencher
-# is the harness, not a measured data point, and is I/O-bound on AWS anyway, so
-# fat LTO would just add build time it never earns back. The cold-start tuning
-# lives in `[profile.lambda]` instead. It can't be scoped per-package (`lto`/
-# `panic` aren't overridable there), so a separate profile is the only way to
-# keep it off bencher.
+# including the `bencher` driver (built via `cargo run --release`). Bencher is
+# the harness, not a measured data point, and is I/O-bound on AWS anyway, so fat
+# LTO would just add build time it never earns back. The cold-start tuning lives
+# in `[profile.lambda]` instead. It can't be scoped per-package (`lto`/`panic`
+# aren't overridable there), so a separate profile is the only way to keep it
+# off bencher.
 
 [profile.lambda]
 # Optimize the deployed Lambda binaries: small + fast cold start. Applied only to

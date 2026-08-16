@@ -95,15 +95,13 @@ describe("SiteStack", () => {
   test("distribution redirects to HTTPS on strong TLS behind the WAF", () => {
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
       DistributionConfig: Match.objectLike({
-        // Viewers are forced onto HTTPS.
         DefaultCacheBehavior: Match.objectLike({
           ViewerProtocolPolicy: "redirect-to-https",
         }),
-        // Min TLS pinned, not left to a weaker CloudFront default.
+        // CloudFront's own default allows a weaker minimum TLS version.
         ViewerCertificate: Match.objectLike({
           MinimumProtocolVersion: "TLSv1.2_2021",
         }),
-        // Web ACL is actually attached.
         WebACLId: Match.anyValue(),
       }),
     });

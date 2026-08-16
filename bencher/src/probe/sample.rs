@@ -30,7 +30,7 @@ pub(super) struct Sample {
 /// (`CellResult`) aggregation so every family reduces identically.
 ///
 /// Spread (min-max) is carried for the three published-as-headline quantities:
-/// the residual (the decomposition's payoff) and the two full caller waits
+/// the residual (what the decomposition solves for) and the two full caller waits
 /// (`w_cold`, `w_warm`), so the page can always show a range next to a p50 it
 /// asks the reader to rely on. The pure subtraction terms (init, cold_dur,
 /// warm_rtt) stay p50-only.
@@ -109,9 +109,9 @@ pub(super) async fn take_sample(
     http_fronted: bool,
     warm_per_sample: u32,
 ) -> Result<Sample> {
-    // Force cold, prewarm, then take the timed cold invoke, retrying the force if
-    // the invoke lands on a warm sandbox (data-plane propagation lag). Mirrors
-    // run.rs::force_cold_invoke's fail-loud discipline: require init_ms.
+    // Retry the force when the invoke lands on a warm sandbox (data-plane
+    // propagation lag). Mirrors run.rs::force_cold_invoke's fail-loud
+    // discipline: require init_ms.
     const MAX_COLD_FORCE_ATTEMPTS: u32 = 6;
     let mut cold: Option<(f64, f64, f64)> = None; // (w_cold, init, cold_duration)
     for attempt in 1..=MAX_COLD_FORCE_ATTEMPTS {
@@ -172,7 +172,6 @@ pub(super) async fn take_sample(
             bail!("{name}: warm invoke {i} unexpectedly cold-started (sandbox retired mid-sample)");
         }
         let wall = w.as_secs_f64() * 1000.0;
-        // Wall-clock minus the handler's own Duration = network + overhead only.
         // Clamp at 0 in the rare case clock skew makes Duration exceed wall-clock.
         let net = (wall - report.duration_ms).max(0.0);
         warm.push(net);

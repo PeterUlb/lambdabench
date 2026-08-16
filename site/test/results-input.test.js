@@ -60,7 +60,7 @@ describe("newestResultsFile", () => {
     expect(chosen).toBe("/explicit/path.json");
   });
 
-  it("throws with a helpful message when the dir has no match", () => {
+  it("throws with a message naming the label when the dir has no match", () => {
     seed(["run-123-abc.jsonl.gz", "unrelated.json"]);
     expect(() =>
       newestResultsFile({

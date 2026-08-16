@@ -120,8 +120,7 @@ async fn get_order(
 /// has already deserialized + validated the input (`coffeeType`, required, enum)
 /// before this runs. We perform the three AWS calls, then return a structured
 /// order whose `id` is a `@pattern`+`@length`-constrained `Uuid`, so the SSDK
-/// runs constraint validation while serializing the response. This exercises
-/// the framework's real (de)serialization + validation work, not just routing.
+/// runs constraint validation while serializing the response.
 async fn create_order(
     input: input::CreateOrderInput,
     state: Extension<Arc<State>>,

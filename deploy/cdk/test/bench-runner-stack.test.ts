@@ -75,7 +75,6 @@ describe("BenchRunnerStack IAM posture", () => {
     const actions = doc.Statement.flatMap((s: { Action: string | string[] }) =>
       Array.isArray(s.Action) ? s.Action : [s.Action],
     );
-    // The exact ceiling: logs write + DDB get/put + KMS encrypt + S3 get/put.
     expect(new Set(actions)).toEqual(
       new Set([
         "logs:CreateLogGroup",
@@ -88,7 +87,6 @@ describe("BenchRunnerStack IAM posture", () => {
         "s3:PutObject",
       ]),
     );
-    // No IAM action and no action wildcard can hide in the ceiling.
     for (const a of actions) {
       expect(a).not.toMatch(/^iam:/);
       expect(a).not.toContain("*");
@@ -98,8 +96,7 @@ describe("BenchRunnerStack IAM posture", () => {
   test("privilege-granting IAM actions are gated on the permissions boundary", () => {
     // CreateRole / AttachRolePolicy / PutRolePolicy / PutRolePermissionsBoundary
     // must carry the iam:PermissionsBoundary condition; without it the runner
-    // could create (or grow, or re-boundary) an unbounded role. Asserting the
-    // condition is present on the granting statement is the crux of the fix.
+    // could create (or grow, or re-boundary) an unbounded role.
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {
         Statement: Match.arrayWith([

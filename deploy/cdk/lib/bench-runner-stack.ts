@@ -304,7 +304,7 @@ export class BenchRunnerStack extends cdk.Stack {
       }),
     );
 
-    // sts:GetCallerIdentity (no resource) - the driver resolves the account id.
+    // sts:GetCallerIdentity (no resource): the driver resolves the account id.
     taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: ["sts:GetCallerIdentity"],

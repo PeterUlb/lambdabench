@@ -66,9 +66,9 @@ export function assertRunComplete(meta) {
 // complete (footer written, trailing rows lost to a partial copy of the results
 // dir or a page-cache flush that never landed). meta.status would still read "ok"
 // while the file holds a subset, publishing percentiles over a partial matrix.
-// This is the one cross-file check that closes that window, using the field
-// record.rs persists for exactly this purpose. Skipped for older metas that
-// predate the field (`total_invocations_recorded == null`), consistent with
+// Closing that window needs `total_invocations_recorded`, the field record.rs
+// persists for exactly this purpose. Skipped for older metas that predate the
+// field (`total_invocations_recorded == null`), consistent with
 // assertRunComplete's older-meta handling. `inputPath` labels the file in the error.
 export function assertRowsMatchMeta(rowCount, meta, inputPath) {
   if (meta.total_invocations_recorded == null) return;
@@ -378,10 +378,10 @@ export function aggregate(rows, meta = {}, { inputBasename = null } = {}) {
 
   // ---- Rust aws-lc-rs jitter-entropy A/B cells -----------------------------
   // Per (arch, scenario, memory, jitter): cold-init P50, cold-firstReq P50, and
-  // cold-total P50. All three because which segment the tax lands in is the
-  // story. Empirically Lambda's Init and Invoke phases behave as if on different
-  // CPU envelopes (Init-phase boost from re:Invent 2019, undocumented elsewhere;
-  // see the README Finding for the disclaimer):
+  // cold-total P50. All three because which segment the tax lands in varies by
+  // scenario. Empirically Lambda's Init and Invoke phases behave as if on
+  // different CPU envelopes (Init-phase boost from re:Invent 2019, undocumented
+  // elsewhere; see the README Finding for the disclaimer):
   //   - oneclient builds the SDK in the Init phase but the first TLS handshake
   //     is in the Invoke phase, so the tax lands in firstReq, a cliff that grows
   //     steeply as memory shrinks.
@@ -623,8 +623,8 @@ export function aggregate(rows, meta = {}, { inputBasename = null } = {}) {
     artifacts,
     // The distribution scatter points are the bulk of the payload, stored
     // columnarly (see the dist section above). Kept in the one payload, which the
-    // browser HTTP-caches across navigations, to avoid streaming the 1.4M-row
-    // source twice.
+    // browser HTTP-caches across navigations, to avoid streaming the
+    // multi-million-row source twice.
     dist,
     distMedians,
   };

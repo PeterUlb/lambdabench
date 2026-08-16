@@ -6,7 +6,7 @@
 //! account and deletes by prefix, so a stranger's function that merely shares the
 //! `lambdabench-` stem is never caught.
 //!
-//! Trade-off: a function whose matrix cell is not in the current config (a
+//! A function whose matrix cell is not in the current config (a
 //! language/scenario/memory tier absent from `all_cells`) is not in the
 //! reconstructed set, so delete such orphans by hand after a matrix trim. The
 //! synthetic probe has no such gap: its size set is a fixed const, so teardown

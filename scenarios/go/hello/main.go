@@ -2,8 +2,8 @@
 //
 // Baseline isolating Go runtime startup + handler dispatch, with no I/O and no
 // SDK initialization. Uses the conventional aws-lambda-go entrypoint
-// (lambda.Start) on the provided.al2023 custom runtime, matching how a real Go
-// handler is written, so this is the startup floor for a conventional handler.
+// (lambda.Start) on the provided.al2023 custom runtime, so this measures the
+// startup floor for a Go handler written the usual way.
 package main
 
 import (
@@ -19,7 +19,6 @@ type response struct {
 	Scenario string `json:"scenario"`
 }
 
-// handler ignores its input and returns the constant payload.
 func handler(_ context.Context) (response, error) {
 	return response{Message: "hello", Scenario: "hello"}, nil
 }

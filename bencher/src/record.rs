@@ -1,12 +1,11 @@
 //! The results data model: one gzipped-JSONL row per invocation, plus run
 //! metadata.
 //!
-//! The durable record of a run: one JSON object per line, gzip-compressed on the
-//! fly. It carries every parsed timing the analysis needs but NOT the raw Lambda
+//! Rows carry every parsed timing the analysis needs but NOT the raw Lambda
 //! log tail. The tail is consumed live (the REPORT line is parsed out of it, and
 //! it is embedded in error messages on an invariant violation), so its data is
-//! already in the parsed columns; persisting the base64 tail on every one of
-//! ~1.4M rows added ~40% per row for an archive nothing read back.
+//! already in the parsed columns; persisting the base64 tail on every one of a
+//! run's millions of rows added ~40% per row for an archive nothing read back.
 
 use anyhow::{Context, Result};
 use flate2::Compression;
@@ -82,13 +81,13 @@ pub struct InvocationRow {
 /// everything written so far is decompressible even if the process later crashes
 /// while compression stays near whole-stream optimal. The flush hands the bytes
 /// to the OS (through the BufWriter), it does not fsync: a process crash loses
-/// nothing, but a machine/power failure can still drop recently flushed rows —
-/// the meta's `total_invocations_recorded` cross-check catches that on read. The gzip footer is written
-/// when the encoder is dropped on a clean finish; a crash leaves a footer-less
-/// but readable stream (gunzip warns about the truncated trailer yet still emits
-/// every flushed row). Per-cell (not per-row) syncing matches the run loop's own
-/// atomicity and avoids per-row sync markers that would cost ~70% in compressed
-/// size for no extra durability.
+/// nothing, but a machine/power failure can still drop recently flushed rows;
+/// the meta's `total_invocations_recorded` cross-check catches that on read. The
+/// gzip footer is written when the encoder is dropped on a clean finish; a crash
+/// leaves a footer-less but readable stream (gunzip warns about the truncated
+/// trailer yet still emits every flushed row). Per-cell (not per-row) syncing
+/// matches the run loop's own atomicity and avoids per-row sync markers that
+/// would cost ~70% in compressed size for no extra durability.
 pub struct ResultsWriter {
     inner: Mutex<GzEncoder<BufWriter<File>>>,
     /// Count of rows successfully written, so the run can record how many
@@ -196,7 +195,7 @@ pub struct RunMeta {
     pub pool: usize,
     /// The full memory sweep this matrix is defined over (`config::MEMORY_MB`),
     /// NOT the tiers this run exercised: a `--memory`-restricted run still records
-    /// the whole sweep here. Documents the matrix definition, not the run's subset.
+    /// the whole sweep here.
     pub memory_mb: Vec<i32>,
     pub total_functions: usize,
     pub total_invocations_planned: u64,

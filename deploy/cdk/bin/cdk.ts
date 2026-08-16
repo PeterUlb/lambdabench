@@ -47,8 +47,8 @@ const env: cdk.Environment = {
 //                     footer's "Source on GitHub".
 //   contactEmail    - OPTIONAL contact email. Injected as LAMBDABENCH_CONTACT_EMAIL
 //                     so the published site shows a "Contact" mailto footer
-//                     link. Omit and the link is absent. Note: a public mailto
-//                     is exposed to spam scrapers; use a retireable address.
+//                     link. Omit and the link is absent. A public mailto is
+//                     exposed to spam scrapers; use a retireable address.
 // The hosted zone is created by hand in the console (see deploy/README.md); its
 // name is derived from siteDomain.
 const siteDomain = app.node.tryGetContext("siteDomain") as string | undefined;

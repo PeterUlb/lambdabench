@@ -1,8 +1,7 @@
 # Hosting and publishing infrastructure
 
 The operator runbook for lambdabench.dev: how the site is hosted on AWS and how a fresh
-benchmark run is published. This is the deployment behind the live site, kept in the repo
-for transparency and reproducibility.
+benchmark run is published.
 
 Two independent lifecycles:
 
@@ -13,9 +12,9 @@ Two independent lifecycles:
    runs the benchmark, tears them down, then rebuilds the static site from the fresh run
    and publishes it. Nothing benchmark-related runs between runs.
 
-The site bucket, the runner, and its container image asset live in **eu-central-1** (Frankfurt),
+The site bucket, the runner, and its container image asset live in eu-central-1 (Frankfurt),
 matching the region the benchmark itself hardcodes in `bencher/src/config.rs`. The ACM certificate and the
-CLOUDFRONT-scoped WAF Web ACL live in **us-east-1** because CloudFront only consumes them from
+CLOUDFRONT-scoped WAF Web ACL live in us-east-1 because CloudFront only consumes them from
 there; SiteStack references both cross-region.
 
 ```
@@ -27,12 +26,13 @@ there; SiteStack references both cross-region.
                                          ├─→ probe download-scaling --with-image [1..200 MB, non-fatal]
                                          ├─→ prose check [lifecycle.md claims vs data, non-fatal]
                                          ├─→ aws s3 cp lifecycle-*.json → ARCHIVE BUCKET
-                                         ├─→ teardown --yes
                                          └─→ site: npm ci && npm run build
                                                        │   (loaders discover newest results/run-* + lifecycle-*)
                                                        ├─→ findings prose check [ordering claims vs fresh stats.json, non-fatal]
                                                        └─→ aws s3 sync out-site/ → SITE BUCKET
                                                             └─→ cloudfront create-invalidation
+                                         teardown --yes runs last, on the EXIT trap
+                                         (so it also reclaims a half-built matrix after a failure)
 
 [Viewers] → Route53 ALIAS → CloudFront distribution (ACM cert + WAF, Free plan covers DDoS + DNS)
                                    └─ OAC → private S3 SITE BUCKET (eu-central-1)
@@ -43,7 +43,7 @@ there; SiteStack references both cross-region.
 - **CloudFront flat-rate Free plan** ($0/mo) covers one distribution + one apex domain, Route 53
   DNS, WAF, DDoS protection, serverless edge compute, and a 5 GB S3 storage credit. The built site
   is a few MB (~3 MB, of which `stats.json` is the bulk) and serves well under the 100 GB transfer /
-  1M request monthly allowance, so the Free tier is comfortable. (Note: AWS _Free Tier_ promotional accounts cannot subscribe to flat-rate
+  1M request monthly allowance, so the Free tier is comfortable. (AWS _Free Tier_ promotional accounts cannot subscribe to flat-rate
   plans; a standard paid account is required.)
 - **TLS cert and WAF Web ACL are CDK-managed.** The plan also offers a plan-issued TLS cert and an
   auto-created WAF, but those resources sit outside CloudFormation: the next `cdk deploy` reconciles
@@ -54,14 +54,14 @@ there; SiteStack references both cross-region.
 - **The plan subscription itself is not modelled in IaC, and can't be a custom resource yet.** The
   underlying API _does_ exist (CloudTrail records a real `CreateSubscription` call:
   `eventSource: pricingplanmanager.amazonaws.com`, `readOnly: false`, with `planName`/`planTier`/
-  `resourceArns` request params), but it has **no published SDK/CLI service model**. As of boto3 1.43.36
+  `resourceArns` request params), but it has no published SDK/CLI service model. As of boto3 1.43.36
   (verify against the current release): there is no `pricingplanmanager` (or `pricing-plan-manager` /
   `cloudfront-pricing-plans`) client, and the `cloudfront` client has no plan operation. So a CDK `AwsCustomResource` (which dispatches
   through the SDK) has nothing to call, which is why both
   [aws/aws-cdk#37857](https://github.com/aws/aws-cdk/issues/37857) and
   [hashicorp/terraform-provider-aws#45450](https://github.com/hashicorp/terraform-provider-aws/issues/45450)
   are open. A hand-rolled SigV4 call to the undocumented endpoint would be brittle and unsupported.
-  **Subscribing the distribution to the plan is one click in the CloudFront v4 console** (below);
+  Subscribing the distribution to the plan is one click in the CloudFront v4 console (below);
   the subscription persists across deploys and republishing content never re-touches it. Revisit a
   custom resource once a service model ships.
 - **ECS Fargate, not CodeBuild**, for the run: CodeBuild's maximum build timeout is exactly 8h and
@@ -136,12 +136,12 @@ clicks are needed and nothing the plan adds drifts from CloudFormation.
 
 ## The runner image
 
-There is no separate build-and-push step. The runner image is a **CDK Docker asset**:
+There is no separate build-and-push step. The runner image is a CDK Docker asset:
 `cdk deploy` builds `deploy/Dockerfile` with the repo root as its build context, pushes it to
 the CDK bootstrap assets repository (`cdk-hnb659fds-container-assets-<account>-<region>`, created
 by `cdk bootstrap`), and wires the resulting URI into the Fargate task definition.
 
-The tag CDK assigns is a **content hash of the build context**:
+The tag CDK assigns is a content hash of the build context:
 
 - The image carries the repo (`COPY . /lambdabench`), so the hash identifies which source the
   Fargate task runs.
@@ -164,15 +164,15 @@ repo grows.
 
 ### Deploy-time context
 
-Context is **not** carried over between deploys: `-c` values live only in the invoking
+Context is not carried over between deploys: `-c` values live only in the invoking
 process, and nothing writes them to `cdk.json` or `cdk.context.json` (that file caches
 lookup-provider results, like the ECS VPC, and is gitignored). Every `cdk deploy` must
-repeat the full set. Omitting one is not equally loud:
+repeat the full set. Omitting one fails loudly or silently depending on the key:
 
 | Omitted                                 | Result                                                                    |
 | --------------------------------------- | ------------------------------------------------------------------------- |
 | `siteDomain`, `hostedZoneId`, `repoUrl` | Throws at synth before any AWS call.                                      |
-| `contactEmail`                          | No error; the next published site simply drops the "Contact" footer link. |
+| `contactEmail`                          | No error; the next published site drops the "Contact" footer link.        |
 
 To avoid retyping them, either add your values to the `context` block of `cdk.json`
 (they're public config, not secrets) or wrap the invocation in a shell alias/script.
@@ -185,13 +185,12 @@ KEEP_RESOURCES=1 deploy/run.sh   # leave the function matrix deployed after the 
 ```
 
 Follow progress in the CloudWatch log group `/lambdabench/runner` (stream prefix `lambdabench-runner`).
-The task runs the pipeline in the diagram above, then exits. Three operational notes the diagram
-can't show:
+The task runs the pipeline in the diagram above, then exits.
 
-- The matrix run is archived **immediately after it completes**, before the probes, so a probe or
+- The matrix run is archived immediately after it completes, before the probes, so a probe or
   build failure can never lose the hours-long run.
 - Both `probe` steps and the two prose checks (lifecycle claims vs probe data; findings ordering
-  claims vs the freshly built `stats.json`) are **non-fatal**: a failure there is logged but does not
+  claims vs the freshly built `stats.json`) are non-fatal: a failure there is logged but does not
   abort the task at that step. But probe output is not committed, so if a probe produced no data the
   site build fails loud and nothing publishes (the live site keeps the previous publish); the probe
   retries transient per-cell failures itself to avoid that.
@@ -200,7 +199,7 @@ can't show:
   `lambdabench-synthdl` ECR repo; it tears down the functions, images, and repo itself.
 
 The raw `run-*.jsonl.gz` / `run-*.meta.json` and the probe `lifecycle-*-<id>.json` files both land in
-the **archive bucket** (a separate private S3 bucket, not fronted by CloudFront, so never publicly
+the archive bucket (a separate private S3 bucket, not fronted by CloudFront, so never publicly
 reachable). Only the built site in `out-site/` is synced to the public origin bucket. Inspect or
 download archives with the AWS CLI against `ArchiveBucketName` from the stack outputs.
 

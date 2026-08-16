@@ -3,15 +3,15 @@
 An [Observable Framework](https://observablehq.com/framework/) site that turns a
 lambdabench results file into an interactive, hostable dashboard. Two-stage design:
 
-1. **Data loader** (`src/data/stats.json.js`) runs at **build time**: it streams
-   the raw `results/run-*.jsonl.gz` (of order 100 MB gz / ~10^6 rows) exactly once
+1. **Data loader** (`src/data/stats.json.js`) runs at build time: it streams
+   the raw `results/run-*.jsonl.gz` (of order 100 MB gz / millions of rows) exactly once
    and emits a compact `stats.json` of aggregates (sub-MB gzipped): per-cell
    percentiles, cost, footprint, artifact sizes, and pre-sampled distribution
    points. This is the only code that touches raw rows.
-2. **Pages** (`src/*.md`) load that JSON and render with Observable Plot **in the
-   browser**. Languages, scenarios, architectures, and memory tiers are reactive
+2. **Pages** (`src/*.md`) load that JSON and render with Observable Plot in the
+   browser. Languages, scenarios, architectures, and memory tiers are reactive
    filters (`src/components/filters.js`): toggling one re-renders every chart
-   instantly, with no rebuild. This is what the static renderer could not do.
+   instantly, with no rebuild.
 
 ## Usage
 
@@ -40,11 +40,15 @@ its compressed size.
 
 ```
 src/
-  data/stats.json.js     build-time loader: raw rows -> compact aggregates
+  data/
+    stats.json.js        build-time loader: raw rows -> compact aggregates
+    lifecycle-*.json.js  build-time loaders: the newest probe JSON per kind,
+                         passed through for the Cold Start Anatomy page
   lib/                   pure, dependency-free modules (loader + client share)
     stats.js             quantile / summarize / geomean
     format.js            formatters, scenario labels + blurbs
     series.js            langKey/seriesOf + data-derived color model
+    results-input.js     newest-input discovery shared by every loader
   components/
     theme.js             palette + base Plot options
     charts.js            makeView() + client-side chart builders (take a view)
@@ -62,27 +66,28 @@ src/
                          work placement, and the suppressed init; renders the
                          off-matrix results/lifecycle-*.json probe data, not
                          stats.json
-  rust.md                Rust opt-level A/B (o3 vs oz); Rust-only dimension
+  rust.md                Rust-only dimensions: the aws-lc-rs jitter-entropy A/B
+                         and the opt-level A/B (o3 vs oz)
   java-snapstart.md      plain JVM vs SnapStart A/B; Java-only dimension
   appendix.md            distribution scatter + full percentile tables
 ```
 
 Pages split by role: the Overview holds the cold-start headline (the charts
-where the spread is widest) plus the summary NUMBERS (head-to-head table); Warm,
+where the spread is widest) plus the summary numbers (head-to-head table); Warm,
 Cost & Tail holds everything beyond cold start (warm, tail, cost, footprint,
-arch); and each runtime-specific dimension (Rust opt-level, Java SnapStart) gets
+arch); and the runtime-specific dimensions (Rust, Java SnapStart) each get
 its own standalone page so the cross-language views stay strictly like-for-like.
 No chart is duplicated across pages. The Rust / Java SnapStart pages render a note instead of a chart when the
 dataset lacks that dimension.
 
 ## The view pattern
 
-Every page builds a filtered VIEW once per render and passes it to all charts
+Every page builds a filtered view once per render and passes it to all charts
 and tables:
 
 ```js
 const sel = view(filterForm(stats, { colorModel: cm })); // reactive selection
-const v = makeView(stats, sel); // apply it ONCE
+const v = makeView(stats, sel); // apply it once
 display(coldVsMemory(v)); // charts read the view
 display(headToHead(v));
 ```
@@ -93,6 +98,6 @@ selection is applied. It returns the filtered dimensions (`languages`,
 `color` scale, and a `memX()` axis builder, all mutually consistent. A chart
 never re-derives "what is selected", so it is structurally impossible to filter
 the data but not the axis (or the row order, or the legend). `v.stats` is the
-escape hatch for the few charts that need the FULL dataset (a fixed
+escape hatch for the few charts that need the full dataset (a fixed
 normalization baseline, or the per-language A/B cells that live outside `cells`).
 When adding a chart, take `v` and read from it; do not re-filter `stats`.

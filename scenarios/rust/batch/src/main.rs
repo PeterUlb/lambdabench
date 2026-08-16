@@ -11,9 +11,8 @@
 //!     uses `serde` with a compile-time-monomorphized `Deserialize`, the fast end
 //!     of the spread. Decoding into a typed `Vec<Record>` (not a generic
 //!     `serde_json::Value` tree) keeps the parse representative of how a real Go/
-//!     Java/Python handler decodes: a flat record array, not a tagged node tree.
-//!     We keep `serde_json`, Rust's de-facto standard decoder; a faster crate
-//!     would compare libraries, not languages.
+//!     Java/Python handler decodes. We keep `serde_json`, Rust's de-facto
+//!     standard decoder; a faster crate would compare libraries, not languages.
 //!   - TAIL (P99/P99.9) at the smaller memory tiers = allocation + GC. The parsed
 //!     records and the group map are all live simultaneously for the whole invoke,
 //!     a large transient object graph a tracing-GC runtime (Node, JVM, Go, Python)
@@ -69,7 +68,7 @@ fn process_batch(payload: &str) -> Result<Value, Error> {
     // Cross-language fairness: Java's `computeIfAbsent` and Go's map insert reuse
     // the parsed key reference, allocating only at first sight of each distinct
     // key. Rust's `entry(key.clone())` would clone on every record, an unfair
-    // per-record tax on the median. Look up first, clone the key only on miss.
+    // per-record tax on the median.
     for r in &records {
         if let Some(entry) = groups.get_mut(&r.key) {
             entry.sum += r.value;
@@ -85,9 +84,8 @@ fn process_batch(payload: &str) -> Result<Value, Error> {
         }
         total += r.value;
     }
-    // Emit per-group totals plus headline figures. Building the output allocates
-    // proportional to group count, mirroring what a real batch processor hands
-    // downstream.
+    // Building the output allocates proportional to group count, mirroring what
+    // a real batch processor hands downstream.
     let mut per_group: Vec<Value> = Vec::with_capacity(groups.len());
     for (k, agg) in &groups {
         per_group.push(json!({ "key": k, "sum": agg.sum, "count": agg.count }));

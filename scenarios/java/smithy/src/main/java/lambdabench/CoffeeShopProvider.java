@@ -39,9 +39,9 @@ import software.amazon.smithy.java.server.Service;
  * which smithy-java exposes no public hook to drive before a checkpoint (the
  * {@code ProxyRequest} event type is package-private). Priming {@code getMenu}
  * directly would warm only the operation method, not the framework path, and this
- * scenario has no AWS SDK to warm either. So the SnapStart cold start legitimately
- * carries the framework first-request cost, the same as plain Java: itself a
- * finding (see README / DESIGN §10), not a gap to work around.
+ * scenario has no AWS SDK to warm either. So the SnapStart cold start carries the
+ * framework first-request cost, the same as plain Java: a documented finding
+ * (see README / DESIGN §10).
  */
 @AutoService(SmithyServiceProvider.class)
 public final class CoffeeShopProvider implements SmithyServiceProvider {

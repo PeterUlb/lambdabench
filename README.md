@@ -23,9 +23,9 @@ into the headline number.
 
 ## Quick start
 
-LambdaBench is the benchmark behind **[lambdabench.dev](https://lambdabench.dev)**, where the results are
-published. This repo holds both halves that produce them: the **`bencher` CLI** that runs the benchmark and
-the **interactive site** that renders a run. Clone it to reproduce the numbers, explore a run locally, or
+This repo holds both halves that produce the results published at
+**[lambdabench.dev](https://lambdabench.dev)**: the **`bencher` CLI** that runs the benchmark and the
+**interactive site** that renders a run. Clone it to reproduce the numbers, explore a run locally, or
 contribute a scenario.
 
 **Run the benchmark.** Drive the pipeline with the `bencher` CLI, the same phases the publish run executes:
@@ -54,9 +54,8 @@ iterate without repeating work, scope `run` and skip the phases that have not ch
 `run --skip-build` reuses the artifacts already in `dist/`, and `run --skip-deploy` invokes the
 functions already deployed (both fail loud if what they expect is missing).
 
-[Usage](#usage) below has the flags and scoped-run recipes; the rest of this file explains what the
-scenarios measure and how cold starts are forced. Two companion docs go deeper: [DESIGN.md](DESIGN.md)
-has the design rules and invariants (read before adding or editing a scenario), and
+[Usage](#usage) below has the flags and scoped-run recipes. Two companion docs go deeper:
+[DESIGN.md](DESIGN.md) has the design rules and invariants (read before adding or editing a scenario), and
 [RUNBOOK.md](RUNBOOK.md) covers running a full sweep at scale (pool sizing, the control-plane quota, and
 the reliability safeguards).
 
@@ -124,8 +123,8 @@ has no probe data until a run produces it, and the site build fails loud rather 
 numbers. The publish pipeline (`deploy/run-benchmark.sh`) runs both subcommands in-region after the
 matrix run, so a manual run is only needed for local iteration. Flags: `--cold-samples` /
 `--warm-per-sample` (sample counts), `--only` / `--memory` / `--arch` (target selection), `--out`
-(output path). `download-scaling` is the **one place padding is used on purpose** — the [Matrix](#matrix)
-section carries the rule for why that is legitimate here and nowhere else — and the full probe design
+(output path). `download-scaling` is the **one place padding is used on purpose**; the [Matrix](#matrix)
+section carries the rule for why that is legitimate here and nowhere else, and the full probe design
 (the residual method, the two runtime families, the teardown backstop) is in
 [DESIGN.md](DESIGN.md#the-probe-subcommand-is-outside-these-invariants).
 
@@ -181,7 +180,7 @@ ASCII-only counting, symmetric native crypto, and the SHA-trap that motivated th
 - **Architectures:** arm64, x86_64
 - **Optimization (Rust only):** `opt-level=3` (speed) vs `opt-level=z` (size). Which cold-starts faster is scenario-dependent, so both are measured. One caveat: the smaller artifact's faster-download advantage lands in the download-and-unpack phase, which no REPORT metric isolates (see the timings note under [How it works](#how-it-works)). So this A/B captures the *loaded-code* trade-off (init link/load + warm execution speed), not total cold start including download. Node, Java, Python, and Go have no equivalent knob.
 
-  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as actually-loaded code, never as inert bytes. **This is why the matrix never pads an artifact with dead filler to "isolate size", and it is the canonical statement of that rule** (referenced from the probe section above and DESIGN.md). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows. Same technique, opposite validity, decided by which phase you are measuring.
+  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as actually-loaded code, never as inert bytes. So the matrix never pads an artifact with dead filler to "isolate size" (the probe section above and DESIGN.md point here for that rule). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows.
 - **`aws-lc-rs` jitter-entropy A/B (Rust only, scoped):** every Rust binary in the matrix is built with `AWS_LC_SYS_NO_JITTER_ENTROPY=1`, which drops the AWS-LC CPU-jitter entropy source to recover its cold-start latency cost (a latency/security trade-off, not a universal win). A second variant with the seeding *enabled* is built only for `oneclient` and `lettercount` × o3 × both arches × all memory tiers, because those two scenarios place the same one-time cost in *opposing* Lambda lifecycle phases (the cliff in the Invoke phase vs the flat bump in the Init phase); other scenarios would just repeat one of them. The full mechanism, the trade-off, and the SnapStart parallel are in the [jitter-entropy Finding](#finding-the-aws-lc-jitter-entropy-cold-start-tax-same-cost-two-outcomes) below.
 - **SnapStart (Java):** plain JVM vs SnapStart, treated as two **separate runtimes**. The dashboard shows `Java` and `Java SnapStart` as distinct series alongside the other runtimes, not as a Java sub-variant, because SnapStart is a fundamentally different execution model, not a tuning knob: it restores a pre-initialized snapshot instead of running the JVM init on every cold start, replacing `Init Duration` with a `Restore Duration` (usually much smaller on a heavy handler, but not always on a light one). The SnapStart variant is **primed**: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, so the AWS SDK's lazy class loading / marshaller construction / JIT is baked into the snapshot. That is the realistic config an operator who enables SnapStart would ship (see the priming finding under Findings).
 
@@ -206,9 +205,9 @@ jitter-entropy dimensions.
 
 ## Findings
 
-The benchmark exists to answer questions, not just produce charts. Each finding below is a place where
-the intuitive reading of the data is wrong, or where *how* a runtime does something matters more than
-*what* it does. The **full write-up, mechanism, and charts for each live on
+Each finding below is a place where the intuitive reading of the data is wrong, or where *how* a
+runtime does something matters more than *what* it does. The **full write-up, mechanism, and charts
+for each live on
 [lambdabench.dev](https://lambdabench.dev)** (linked per finding); this section keeps only the headline
 shape and the data that exists nowhere else.
 
@@ -297,8 +296,8 @@ The trigger is not "the invocation failed", it is whether the process survives: 
 runtimes, an **OOM**, a **timeout**, and a **process exit** re-init on every one, while an **ordinary
 handler exception / returned error** stays warm on every one (the mapping diverges at the edges, e.g. a
 Go `panic` re-inits while a Rust `panic` stays warm). The sharper edge is on **SnapStart**: the
-recovery after such a failure runs a **full from-scratch JVM init, not a snapshot restore**, so it does
-not just re-pay the fast path, it abandons it, on the runtime where init is most expensive. Full
+recovery after such a failure runs a **full from-scratch JVM init, not a snapshot restore**, so it
+abandons the fast path outright, on the runtime where init is most expensive. Full
 write-up, the per-runtime mapping, and the verification on
 **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle)** (general) and
 **[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart)** (the SnapStart recovery
@@ -331,7 +330,7 @@ near-linear climb reaching of order a second near Lambda's size limit, latency n
 [*On-demand Container Loading in AWS Lambda*](https://arxiv.org/abs/2305.13162)), so its pre-init
 residual stays flat at every size and the size cost surfaces in the **reported** `Init Duration`
 instead, to the extent the code is actually loaded at startup. Summed (init + residual), the zip
-starts lower but the image pulls ahead as size grows, with the crossover in the low tens of MB; at
+starts lower but the image pulls ahead as size grows, with the crossover several tens of MB up; at
 this matrix's realistic artifact sizes the two are within noise, so the image advantage is a
 large-artifact effect, not a universal win. Memory tier moves neither phase's size cost. The probe's
 padding is a deliberate worst case for the image (unique, all-touched bytes that defeat
@@ -418,7 +417,7 @@ The tail-vs-median charts and the read-in-absolute-ms rule are on
 
 ## Running a full sweep
 
-Issuing ~10^6 invocations against the live control plane over hours (without throttling or recording a
+Issuing millions of invocations against the live control plane over hours (without throttling or recording a
 single bad sample) has its own operational concerns; those live in **[RUNBOOK.md](RUNBOOK.md)**, so read
 it when tuning or debugging a run. The default `--pool 32` is rate-safe by design, so a plain `run`
 needs no tuning.

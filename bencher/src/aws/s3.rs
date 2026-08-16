@@ -278,16 +278,13 @@ impl Aws {
 /// code units), and Python (code points), which match only for ASCII. Generated
 /// in-process and deterministic, so every deploy seeds the same bytes.
 fn generate_lettercount_payload(min_bytes: usize) -> String {
-    // A small lowercase-ASCII word pool builds each entry deterministically, so
-    // the payload is varied but reproducible.
     const WORDS: [&str; 8] = [
         "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
     ];
 
     build_json_array(min_bytes, |i| {
-        // Each entry is a short lowercase-ASCII sentence of a few words plus the
-        // index, kept distinct across entries. JSON-quoted; the words and digits
-        // contain no characters needing escaping.
+        // Entries are JSON-quoted here; the words and digits contain no
+        // characters needing escaping.
         let w0 = WORDS[i % WORDS.len()];
         let w1 = WORDS[(i / WORDS.len()) % WORDS.len()];
         let w2 = WORDS[(i / (WORDS.len() * WORDS.len())) % WORDS.len()];

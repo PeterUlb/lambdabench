@@ -73,7 +73,6 @@ impl Aws {
     pub async fn ensure_function(&self, cell: &Cell, role_arn: &str, zip: &[u8]) -> Result<()> {
         let name = cell.function_name();
 
-        // For oversized artifacts, stage the zip in S3 and reference it.
         let s3_key = if zip.len() >= INLINE_ZIP_LIMIT {
             Some(self.stage_code_in_s3(&name, zip).await?)
         } else {
@@ -885,9 +884,9 @@ fn snap_start_for(cell: &Cell) -> SnapStart {
 
 /// The invocation payload for a cell. The `smithy`/`smithyfull` scenarios are
 /// fronted by a Smithy server SDK whose Lambda adapter dictates the event shape:
-/// Rust/Node use the AWS Smithy apigateway adapter (API Gateway **v2** HTTP
+/// Rust/Node use the AWS Smithy apigateway adapter (API Gateway v2 HTTP
 /// event), while Java's smithy-java `LambdaEndpoint` expects the API Gateway
-/// **v1** proxy event (`path`/`httpMethod`/`body`). All other scenarios take a
+/// v1 proxy event (`path`/`httpMethod`/`body`). All other scenarios take a
 /// plain JSON object regardless of language.
 ///
 /// `pub(crate)` so the probe's shared name-based `take_sample` (which no longer

@@ -10,8 +10,8 @@ use std::process::Command;
 
 fn main() {
     let script = "fixtures/generate.mjs";
-    // Re-run if the generator changes; the fixtures themselves are gitignored and
-    // generated, so we do not track them as rerun-if-changed inputs.
+    // The fixtures themselves are gitignored and generated, so only the generator
+    // is tracked as a rerun-if-changed input.
     println!("cargo:rerun-if-changed={script}");
 
     let status = Command::new("node")

@@ -97,9 +97,8 @@ struct ImageOutput {
     /// above, so the zip-vs-image chart compares like with like (same session,
     /// vantage, date). NOT read from the separately-written
     /// `lifecycle-download-scaling.json`: that file is a distinct probe invocation
-    /// and could drift in date/vantage. Embedding the co-measured baseline keeps
-    /// the comparison a self-contained snapshot. Python only (it matches the
-    /// image's managed Python base); the `rust` family is not carried here.
+    /// and could drift in date/vantage. Python only (it matches the image's
+    /// managed Python base); the `rust` family is not carried here.
     zip_baseline: Vec<SyntheticSample>,
 }
 
@@ -430,7 +429,6 @@ async fn sample_all_images(
     Ok((out, base_image_bytes_est))
 }
 
-/// Aggregates one (variant × size)'s samples into an `ImageSample`.
 fn aggregate_image(
     family: &str,
     size_mb: u32,

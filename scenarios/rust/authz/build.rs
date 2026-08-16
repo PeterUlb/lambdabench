@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    // This crate lives at scenarios/rust/authz; the generator is four levels up.
+    // This crate lives at scenarios/rust/authz, so the repo root is three levels up.
     let script = Path::new("../../../bencher/fixtures/generate.mjs");
     println!("cargo:rerun-if-changed={}", script.display());
 

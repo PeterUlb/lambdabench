@@ -5,7 +5,7 @@ toc: true
 
 # Anatomy of an AWS Lambda cold start
 
-A cold start is not one thing. AWS's own
+AWS's own
 [execution-environment lifecycle docs](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html)
 break the first invocation of a fresh environment into four sequential steps:
 
@@ -24,8 +24,8 @@ here separates what AWS documents from the observed behavior it rests on.
 <div class="tldr-label">The short version</div>
 
 - **Two of the four cold-start steps are invisible to every metric.** Code download and environment start finish _before_ any `REPORT` clock starts, so they land in no `Init Duration`, no `Duration`, and no CloudWatch function metric. [The hidden steps →](#the-hidden-steps-download-environment-start)
-- **Two adders turn any number on this site into an end-to-end caller wait.** No metric itemizes a "latency excluding network" number (network and Lambda's per-invoke front-end share one un-itemized wall-clock), but for a same-region caller: cold wait ≈ the cold start + the ~100 ms-scale residual + a small front-end lump, and warm wait ≈ the warm duration + the same lump, both adders measured below. [What a caller actually waits through →](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
-- **For a `.zip`, the invisible download+start cost grows with package size:** a flat floor of ~${Math.round(dlFloor)} ms up to a few MB, then a near-linear climb (very roughly 4-8 ms/MB) reaching of order a second and up near Lambda's size limit. A container image inverts this, moving the size cost into the _reported_ `Init Duration` instead. [Zip vs container image →](#zip-vs-container-image-where-the-size-cost-lands)
+- **Two terms turn any number on this site into an end-to-end caller wait.** No metric itemizes a "latency excluding network" number (network and Lambda's per-invoke front-end share one un-itemized wall-clock), but for a same-region caller: cold wait ≈ the cold start + the ~100 ms-scale residual + a small front-end lump, and warm wait ≈ the warm duration + the same lump, both terms measured below. [What a caller actually waits through →](#what-a-caller-actually-waits-through-two-terms-on-top-of-this-sites-numbers)
+- **For a `.zip`, the invisible download+start cost grows with package size:** a flat floor of ~${Math.round(dlFloor)} ms up to a few MB, then a near-linear climb (very roughly 3-8 ms/MB) reaching of order a second and up near Lambda's size limit. A container image inverts this, moving the size cost into the _reported_ `Init Duration` instead. [Zip vs container image →](#zip-vs-container-image-where-the-size-cost-lands)
 - **The Init phase appears to run on boosted, roughly full-vCPU CPU; the handler runs at the configured tier's fraction.** Below ~1.8 GB, setup done _at init_ is effectively subsidized. This is observed, not a documented contract, so [don't build on it →](#inside-the-visible-part-init-runs-on-boosted-cpu).
 - **Where two runtimes do comparable work at comparable speed, _which phase_ they run it in can dominate their cold gap.** Rust and Go (both fast, compiled, near-equal at the raw setup) are the clean example: Rust front-loads SDK/TLS setup into the boosted init while Go defers the identical work to the metered first request, so their several-fold low-memory gap narrows to ~1.3x once both run it at the same CPU (a dated off-matrix probe, not this site's benchmark data; see below). This is a specific eager-vs-lazy story, not a general rule: a gap rooted in the execution model itself (e.g. JVM startup vs a native binary) persists in any phase. [Same work, different phase →](#the-cross-language-consequence-same-work-different-phase)
 - **A crash or timeout re-runs Init, invisibly, on the _next_ invocation.** If a failure ends the runtime process (OOM, timeout, process exit on every runtime tested), the following invocation pays a _suppressed init_ whose duration hides inside its reported `Duration`; a failure the runtime catches (an ordinary handler exception) stays warm. The mapping is runtime-specific at the edges: a Go panic re-inits while a Rust one stays warm, and a Node stack overflow stays warm while it re-inits elsewhere. [When a crash or timeout re-runs Init →](#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)
@@ -50,8 +50,7 @@ here separates what AWS documents from the observed behavior it rests on.
 
 ## What counts as a "cold start"? AWS's own materials draw the line differently
 
-The term is overloaded, and two AWS diagrams label its boundary differently, so the boundary is
-pinned down here before any numbers.
+The term is overloaded: two AWS diagrams label its boundary differently.
 
 - The [lifecycle docs](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html)
   color only steps 1-2 (download + environment start) as **"cold start duration"** and put the
@@ -92,10 +91,6 @@ This split is for a `.zip` archive (this benchmark's packaging): its code is dow
 in steps 1-2, in full, before init begins, so "download" sits squarely in the unreported first
 column. A container image splits the cost differently, and gets its own section:
 [Zip vs container image](#zip-vs-container-image-where-the-size-cost-lands).
-
-The rest of the page is about the first column, the download + environment start that no
-function-side signal reports, and then, inside steps 3-4, why _where_ setup runs changes what it
-costs.
 
 ```js
 import { median } from "./lib/stats.js";
@@ -188,20 +183,20 @@ residual  =  W_cold  −  init  −  cold_duration  −  warm_rtt
 
 where `warm_rtt` is the median network + invoke-API overhead of subsequent warm invokes of the same
 function, each warm invoke's wall-clock minus its **own** `REPORT` `Duration`, so the handler's
-processing time is _not_ included. That subtlety matters: `cold_duration` already nets out the cold
-invoke's handler work, so netting the warm handler out of `warm_rtt` too means the handler cancels on
-both sides and `residual` is the download + start cost whether the handler does ~1 ms or ~1 s of
-work. What is left is steps 1 + 2, the code download and environment start, plus a small
-provisioning/scheduling remainder that no function-side timing can see. Routine per-invoke
-control-plane overhead (auth, throttling) does not inflate this: it is present in both `W_cold` and
-`warm_rtt`, so the subtraction removes it, and only the cold-specific placement work survives.
+processing time is _not_ included. `cold_duration` already nets out the cold invoke's handler work,
+so netting the warm handler out of `warm_rtt` too means the handler cancels on both sides and
+`residual` is the download + start cost whether the handler does ~1 ms or ~1 s of work. What is left
+is steps 1 + 2, the code download and environment start, plus a small provisioning/scheduling
+remainder that no function-side timing can see. Routine per-invoke control-plane overhead (auth,
+throttling) does not inflate this: it is present in both `W_cold` and `warm_rtt`, so the subtraction
+removes it, and only the cold-specific placement work survives.
 
 One thing `warm_rtt` deliberately is **not**: a decomposition of its own two ingredients. The
 network path and Lambda's per-invoke front-end processing (request auth, the throttle/concurrency
 check, routing to the sandbox) share that single caller-side wall-clock, and no service-side metric
 itemizes either, so they stay one lump. The method never needs the split, only that the lump repeats
 identically on cold and warm invokes so it cancels.
-[What a caller actually waits through](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
+[What a caller actually waits through](#what-a-caller-actually-waits-through-two-terms-on-top-of-this-sites-numbers)
 below is where that lump stops being subtracted and becomes a cost in its own right.
 
 ```js
@@ -264,13 +259,13 @@ display(
 ```
 
 The table spans three axes, and the pattern is consistent: **for a `.zip` artifact, artifact size
-is the clearest systematic mover of the residual; memory tier is essentially flat, and runtime
+is the clearest systematic mover of the residual; memory tier is flat within noise, and runtime
 family shows no separate fixed floor once size and the wide per-sample range are accounted for.**
 (Packaging matters here: a container image splits this cost differently, covered in
 [Zip vs container image](#zip-vs-container-image-where-the-size-cost-lands) below.) The zip rows read this way:
 
 - **Memory / vCPU** (the `rust/hello` rows at 128 / 512 / 3008 MB, and the `@512` vs `@3008` pairs):
-  the residual is essentially **flat**, consistent with steps 1-2 running before the configured CPU
+  the residual is **flat within noise**, consistent with steps 1-2 running before the configured CPU
   allocation takes effect, so provisioning appears not to get the low-tier penalty that the _handler_
   pays. Unlike the init/first-request cost, this part is neither subsidized nor penalized by the
   memory tier.
@@ -286,7 +281,7 @@ family shows no separate fixed floor once size and the wide per-sample range are
   the **same floor**, so the provisioning cost looks family- and language-independent, it is the
   download and the environment start, not "which runtime."
 
-The takeaway across all the rows: most of what a caller waits through before the handler begins is
+Across all the rows: most of what a caller waits through before the handler begins is
 fixed environment-provisioning cost, plus a download term that only bites for large packages, and
 none of it appears in any `REPORT` line.
 
@@ -320,7 +315,7 @@ matrix**, the same way the [cross-language probes](#the-cross-language-consequen
      which writes a run-scoped results/lifecycle-download-start-<run_id>.json (gitignored);
      this page's data loader discovers the newest one at build time. -->
 
-## What a caller actually waits through: two adders on top of this site's numbers
+## What a caller actually waits through: two terms on top of this site's numbers
 
 Every number on this site is REPORT-side: a cold start is `init` + the first request's `duration`,
 warm latency is the handler's own `duration`. A caller's wall-clock contains more, and the probe
@@ -352,7 +347,7 @@ client→region round-trip goes on top of both expectations, plus a TLS handshak
 is not pooled.
 
 The residual alone would _under_-count the wait: its construction cancels the lump, which even a
-zero-distance caller still pays. The two adders
+zero-distance caller still pays. The two terms
 answer different questions: the residual is what being cold costs beyond the REPORT metrics; the
 lump is what invoking costs at all.
 
@@ -368,6 +363,15 @@ time around the SDK's `Invoke` call), so the formula can be checked against real
 // small-artifact cell at the lowest tier, the slow-init managed-runtime
 // bundle, and the fattest zip in the matrix.
 const feLump = median(dl.cells.map((c) => c.warm_rtt_p50));
+// Warm gaps (W_warm - warm_rtt, i.e. the handler's own Duration) at the two ends
+// of the probed set, so the prose's magnitudes track the data: the trivial
+// rust/hello cell against the heaviest per-invoke handler among the probed cells.
+// The heavy end is SELECTED from the data, name included, so the sentence cannot
+// keep naming a scenario that a later probe set no longer tops out on.
+const warmGap = (c) => c.w_warm_p50 - c.warm_rtt_p50;
+const warmGapCell = dl.cells.reduce((a, b) =>
+  warmGap(a) >= warmGap(b) ? a : b,
+);
 const sanity = [
   ["rust", "hello", 128],
   ["java", "smithyfull", 512],
@@ -431,15 +435,18 @@ display(
 ```
 
 The warm side checks the same way: on every probed cell the directly measured warm wall-clock
-`W_warm` sits above that cell's front-end lump by just the handler's own `Duration`, a few ms (for
-`rust/hello` @ 128 MB: ${ms(dlHello.w_warm_p50, 1)} <span class="caption">(${dlHello.w_warm_min.toFixed(1)}–${dlHello.w_warm_max.toFixed(1)})</span> measured
-against its own ${ms(dlHello.warm_rtt_p50, 1)} `warm RTT`; the range is min–max across the
-cold samples' warm batches). Every probed handler is trivial on purpose; for a heavier handler the
-expectation really is its own warm `duration` plus the lump, which is the warm half of the formula.
+`W_warm` sits above that cell's front-end lump by just the handler's own `Duration`. On a trivial
+handler that is ~${ms(warmGap(dlHello), 1)} (for `rust/hello` @ 128 MB: ${ms(dlHello.w_warm_p50, 1)}
+<span class="caption">(${dlHello.w_warm_min.toFixed(1)}–${dlHello.w_warm_max.toFixed(1)})</span>
+measured against its own ${ms(dlHello.warm_rtt_p50, 1)} `warm RTT`; the range is min–max across the
+cold samples' warm batches). The probed rows whose handler does real per-invoke work sit further
+above their lump, up to ~${ms(warmGap(warmGapCell))} on <code>${warmGapCell.lang}/${warmGapCell.scenario}</code>,
+again matching that cell's own warm `duration`. That is the warm half of the formula for any
+handler: its warm `duration` plus the lump.
 
 <div class="warning" label="A floor from a same-region caller, not a latency promise">
 
-Both adders and the measured waits are illustrative single-client, single-account magnitudes from
+Both terms and the measured waits are illustrative single-client, single-account magnitudes from
 the same off-matrix probe as the decomposition above: same region, pooled HTTPS connection. The
 cold ranges are wide because cold placement genuinely varies invoke to invoke. Nothing here
 subtracts the network; it is merely small from this vantage.
@@ -480,7 +487,7 @@ display(C.syntheticDownloadScaling(dscale, invalidation));
 // Per-run magnitudes quoted in the prose below are DERIVED from the committed
 // dscale JSON, never hand-typed, so the "this run measured …" values always match
 // the chart the pipeline just refreshed. Shape claims (floor, slope range, ~Nx)
-// stay as prose: they are the robust cross-run findings, not one run's numbers.
+// stay as prose: those hold across runs, where the magnitudes are per-run.
 const dscaleByFam = new Map();
 for (const s of dscale.samples ?? []) {
   if (!dscaleByFam.has(s.family)) dscaleByFam.set(s.family, new Map());
@@ -507,14 +514,14 @@ const dscaleMin = dscaleSizes[0];
 
 The shape (for `.zip` archives): a **flat floor of ~${Math.round(dlFloor)} ms up to a few MB** (the same provisioning
 floor the decomposition table above shows, measured here by an independent probe, download is lost in it), then,
-once the package grows past that, a **near-linear climb** of very roughly **4-8 ms per MB**, reaching
+once the package grows past that, a **near-linear climb** of very roughly **3-8 ms per MB**, reaching
 of order **a second and up at 200 MB** (the exact slope and endpoint move run to run; this run measured
 Python ~${residSecAt("python", dscaleMax)} s, Rust ~${residSecAt("rust", dscaleMax)} s at ${dscaleMax} MB). Both runtime families show the **same shape**: the flat
 floor up to a few MB, then the near-linear climb. That shared shape (managed Python and custom-runtime
 Rust rising the same way) is the signature of platform-level byte transfer, not a per-runtime code path.
 The two lines are not identical run to run, but at every size their min–max bands overlap and the gap
 between their medians stays smaller than the spread _within_ either family, so with only
-${dscale.samples?.[0]?.n_samples ?? 0} cold samples per point that gap is within noise, not a runtime effect. The robust, reproducible
+${dscale.samples?.[0]?.n_samples ?? 0} cold samples per point that gap is within noise, not a runtime effect. The reproducible
 result is the shared flat-floor→linear-climb shape, and which family reads slightly higher is not
 stable enough to attribute to the runtime. So for a large `.zip` package the download term dominates cold start
 outright, and it is latency **no `REPORT` line, no `Init Duration`, no CloudWatch function metric
@@ -524,13 +531,13 @@ container image too, but for a different reason: there the cost lands in the _re
 
 The **solid line on the chart above** makes this concrete: across the whole 1-to-200 MB sweep the
 reported **`Init Duration` stays flat** (Rust ~${initMsAt("rust", dscaleMin)} ms, Python ~${initMsAt("python", dscaleMin)} ms, no upward trend, hover any
-point to read it) while the dashed residual climbs by roughly an order of magnitude (~8-14x run to
-run). If code download were folded into init, that
+point to read it) while the dashed residual climbs by roughly an order of magnitude. If code
+download were folded into init, that
 solid line would climb with the dashed one and a 200 MB package's init would be seconds; it does not,
 so the growth lands entirely outside the metric.
 
 Same "illustrative, environment-dependent, single-account" caveat as the table above; the _shape_
-(flat floor → ~linear climb, family-independent) is the robust result, the exact ms are
+(flat floor → ~linear climb, family-independent) is the reproducible result, the exact ms are
 environment-specific.
 
 <!-- Regenerate with: cargo run -p bencher -- probe download-scaling
@@ -597,6 +604,22 @@ const totalRow = (mb) => {
 const imgResiduals = (dimg.samples ?? []).map((s) => s.residual_p50);
 const residFloorLo = mround(Math.min(...imgResiduals));
 const residFloorHi = mround(Math.max(...imgResiduals));
+// The crossover bracket: the largest measured size where the zip's summed
+// overhead still wins and the smallest where the image does. Read off the same
+// p50s the table below prints, so the bracket can never contradict its own rows.
+const totals = imgSizes
+  .map(totalRow)
+  .filter((r) => r.zip != null && r.img != null);
+const crossLo = totals.filter((r) => r.zip < r.img).at(-1)?.mb ?? null;
+const crossHi =
+  totals.find((r) => r.img < r.zip && (crossLo == null || r.mb > crossLo))
+    ?.mb ?? null;
+// Empty when the flip is not bracketed by two measured sizes (the sentence then
+// keeps only its run-to-run caveat rather than printing a null bracket).
+const crossoverNote =
+  crossLo != null && crossHi != null
+    ? `in this run it falls between the ${crossLo} and ${crossHi} MB rows; `
+    : "";
 ```
 
 Across the four lines the inversion is clear:
@@ -617,7 +640,8 @@ Across the four lines the inversion is clear:
   not proportional to the package.
 - **Total cold overhead (init + residual), the two lines summed** (each point's value is available on hover): the
   `.zip` starts lower (it has no base-layer floor) but the image pulls ahead as size grows, with the
-  crossover in the low tens of MB. The table below is built from the same committed p50s the chart
+  crossover several tens of MB up (${crossoverNote}the exact point moves run to run). The table
+  below is built from the same committed p50s the chart
   draws (the smallest- and largest-size rows are bold, the two ends of the crossover):
 
 ```js
@@ -703,9 +727,9 @@ numbers onto it.
 
 ### At a realistic ~11 MB size, the two are within noise
 
-The chart uses _inert padding_
-to push size far past any real artifact; below ~10-20 MB there is little to win, and an image carries
-a fixed base-layer floor (≈${(dimg.base_image_bytes_est / 1e6).toFixed(0)} MB here) a lean `.zip` does not.
+The chart uses _inert padding_ to push size far past any real artifact; well below the crossover
+above there is little to win, and an image carries a fixed base-layer floor
+(≈${(dimg.base_image_bytes_est / 1e6).toFixed(0)} MB here) a lean `.zip` does not.
 
 > **Dated one-off characterization (taken 2026-07, arm64/512 MB, single account; not committed
 > data).** For a real Rust `smithyfull` binary (~10.6 MB uncompressed, ~4.9 MB zip; not
@@ -723,13 +747,13 @@ The committed data above is a single tier (${dimg.memory_mb} MB), so it does not
 that; a separate check did.
 
 > **Dated one-off characterization (taken 2026-07, arm64, single account; not committed data).** A
-> memory sweep of the 200 MB touched image across 128 MB → 3 GB found its `Init Duration` essentially
+> memory sweep of the 200 MB touched image across 128 MB → 3 GB found its `Init Duration` nearly
 > flat (~400 ms at every tier; a separate run from the committed 200 MB chart point above, which
 > reflects its own run's magnitude), and a `.zip`'s init flat too once the artifact is not
 > pathologically large. Consistent with the Init-phase CPU boost the next section documents: memory
 > tier does not move either phase's size cost; only packaging does.
 
-<div class="caption">Same off-matrix caveat as the zip probes above (single client, single account, illustrative magnitudes, not matrix data). Both series are measured in the same in-region run, so the two are directly comparable. The <em>shapes and direction</em> are the robust result (zip residual climbs, image init climbs when loaded, image residual flat), not the exact ms.</div>
+<div class="caption">Same off-matrix caveat as the zip probes above (single client, single account, illustrative magnitudes, not matrix data). Both series are measured in the same in-region run, so the two are directly comparable. The <em>shapes and direction</em> are the reproducible result (zip residual climbs, image init climbs when loaded, image residual flat), not the exact ms.</div>
 
 <!-- Refreshed by the publish pipeline (deploy/run-benchmark.sh's download-scaling step) alongside the zip families:
      cargo run -p bencher -- probe download-scaling --with-image
@@ -762,7 +786,7 @@ noting they do this "because we want the functions to start faster."
 
 The tier's fractional allocation is the **baseline the function is configured for and billed
 at**, not a penalty. The Init phase is the anomaly, running _above_ that baseline; the handler
-simply runs _at_ it.
+runs _at_ it.
 
 In these measurements, work done _before_ the handler is reached, resolving credentials and
 configuration, running a first TLS handshake, or any CPU-heavy static initialization, behaves as if
@@ -820,7 +844,7 @@ while wiring up the credential providers, so the cost lands in the boosted Init 
 | with a no-op HTTP client supplied           | ~0.1 ms  |
 | with static credentials (no provider chain) | ~0.03 ms |
 
-Swapping in a no-op HTTP client collapses `load()` from ~63 ms to ~0.1 ms, so essentially the
+Swapping in a no-op HTTP client collapses `load()` from ~63 ms to ~0.1 ms, so nearly the
 entire cost _is_ building that client. About ~18 ms of it is loading and parsing the OS root
 certificates; the rest is the TLS/connector assembly. Constructing the `aws-lc-rs` crypto
 provider is negligible (~0.001 ms); that is separate from the one-time RNG **seeding** the
@@ -880,7 +904,7 @@ re-initializes the extension and runtime together with the next invocation." Tha
 is called a **suppressed init**, and the docs are explicit that it gets no separate log line: the
 `REPORT` line reads as one slow invoke rather than an init plus an invoke.
 
-The trigger is narrower than "the invocation failed": it is not the error, it is whether the
+The trigger is narrower than "the invocation failed": what decides it is whether the
 **runtime process survives**. If the failure ends the OS process, the next invoke re-runs Init; if the
 runtime catches it and reports it over the Runtime API, the process stays alive and the environment
 stays warm. Some failures land the same way on every runtime:
@@ -899,8 +923,9 @@ diverge from the rest:
   exits the process, so the next invoke pays a suppressed init.
 - **A stack overflow stays warm on Node but re-inits everywhere else.** In Node it surfaces as a
   catchable `RangeError` ("Maximum call stack size exceeded") that leaves the process alive; on Java
-  (a `StackOverflowError`, one of the `VirtualMachineError`s that always kill the runtime alongside
-  `OutOfMemoryError`), Python, Rust, and Go a genuine stack overflow aborts the process, so it
+  (a `StackOverflowError`: the JVM itself can catch one, but Lambda's Java runtime did not survive it
+  in testing, the same way it does not survive an `OutOfMemoryError`), Python, Rust, and Go a genuine
+  stack overflow aborts the process, so it
   re-inits. Python needs the qualifier "genuine": ordinary deep recursion raises a catchable
   `RecursionError` and stays warm; only an overflow that defeats the interpreter's recursion guard
   (C-level recursion, or a recursion limit raised past the real stack) aborts the process.
@@ -908,9 +933,11 @@ diverge from the rest:
 <div class="warning" label="The re-init is boosted, but its budget differs from a cold start's">
 
 A first cold start's Init phase gets its own budget, separate from the function timeout (10 seconds
-for a standard function; up to 130 seconds or the configured timeout for provisioned-concurrency and
-SnapStart functions). Verified off-matrix: a function with an **8-second init and a 3-second timeout**
-still cold-started successfully, its first invoke reporting `Init Duration: ~8.1 s` with no timeout.
+for a standard function; for provisioned-concurrency and SnapStart functions that 10-second limit
+does not apply at all, and init may run up to 15 minutes, the limit being 130 seconds or the
+configured function timeout, whichever is _higher_). Verified off-matrix: a function with an
+**8-second init and a 3-second timeout** still cold-started successfully, its first invoke
+reporting `Init Duration: ~8.1 s` with no timeout.
 The suppressed init that follows a crash is different in _where_ it is accounted, not in _speed_:
 even though it happens on the invoke path and bills as `Duration`, it still gets the
 [Init-phase CPU boost](#inside-the-visible-part-init-runs-on-boosted-cpu) (the same CPU workload
@@ -942,8 +969,8 @@ crash has a sharper edge, covered on the [SnapStart page](./java-snapstart#a-sna
   the part the `REPORT` line reports. It does **not** include the download + environment-start
   (steps 1-2) measured above; a caller waits through those too, but no function metric exposes them,
   so they are documented here separately rather than folded into the headline number.
-  [What a caller actually waits through](#what-a-caller-actually-waits-through-two-adders-on-top-of-this-sites-numbers)
-  turns the headline number into an end-to-end expectation with two measured adders.
+  [What a caller actually waits through](#what-a-caller-actually-waits-through-two-terms-on-top-of-this-sites-numbers)
+  turns the headline number into an end-to-end expectation with two measured terms.
 - **What a low-tier cold gap reflects.** Every function on this site builds its clients at init in
   each language's idiomatic style, so the published cold starts already embed the placement effect.
   That is representative of well-written handlers, but it means a cold gap at 128 or 256 MB

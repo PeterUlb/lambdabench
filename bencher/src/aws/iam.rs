@@ -20,11 +20,10 @@ const BASIC_EXEC_POLICY_ARN: &str =
 /// Env var carrying the ARN of the managed POLICY to set as the permissions
 /// boundary on the execution role. The hosted Fargate runner sets it (see
 /// `deploy/cdk`) so the role it creates can never exceed a fixed ceiling, even
-/// though the runner holds `iam:AttachRolePolicy`. Under the runner this is not
-/// optional: the runner's `CreateRole`/boundary grant is itself gated on
+/// though the runner holds `iam:AttachRolePolicy`. Under the runner it is
+/// required: the runner's `CreateRole`/boundary grant is itself gated on
 /// `iam:PermissionsBoundary` equaling this policy, so a create that omits the
-/// boundary is denied. Setting it here is what makes bencher's own `CreateRole`
-/// satisfy that condition. Standalone `bencher` runs leave it unset and create the
+/// boundary is denied. Standalone `bencher` runs leave it unset and create the
 /// role with no boundary (the caller already holds whatever IAM rights they ran
 /// with).
 const EXEC_ROLE_BOUNDARY_POLICY_ENV: &str = "LAMBDABENCH_EXEC_ROLE_BOUNDARY_POLICY_ARN";
@@ -45,10 +44,9 @@ impl Aws {
     /// invoke of a freshly created role is inline-policy propagation lag, not a
     /// misconfiguration. The cell-retry (3 attempts, ~15 s backoff) may absorb a
     /// short lag but is not guaranteed to cover a deep one: a freshly created role
-    /// invoked immediately can still exhaust the retries and abort. The mitigation
-    /// is the deploy/run time gap, not the retry. If this becomes a real problem,
-    /// probe inline-policy readiness here before returning rather than widening the
-    /// cell-retry budget.
+    /// invoked immediately can still exhaust the retries and abort. If this becomes
+    /// a real problem, probe inline-policy readiness here before returning rather
+    /// than widening the cell-retry budget.
     pub async fn ensure_role(&self) -> Result<String> {
         // Optional permissions boundary (set by the hosted runner); see the
         // env-var doc comment above.

@@ -8,8 +8,9 @@ license = "Apache-2.0"
 # fetches a ~1 MB JSON array of ASCII strings from S3 and holds it in memory;
 # each warm invoke parses it and counts lowercase-letter occurrences per entry,
 # returning 26 per-letter totals. The counting is a tight in-language byte loop
-# (Rust machine code vs the V8 JIT), not a native library both runtimes call, so
-# it measures the language. The parse allocates a fresh object graph per invoke.
+# (Rust machine code vs the V8 JIT or CPython's interpreter), not a native library
+# every runtime calls, so it measures the language. The parse allocates a fresh
+# object graph per invoke.
 # Fetching at init (not per invoke) keeps the warm measurement pure compute.
 
 [[bin]]

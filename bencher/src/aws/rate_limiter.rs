@@ -9,9 +9,9 @@ use std::time::Duration;
 /// and only bounds the RATE as a side effect of latency (fast calls slip through
 /// at high TPS), whereas this bounds the issue rate directly. Each
 /// `acquire().await` reserves the next free time slot and advances it by the
-/// interval, so concurrent acquirers are spaced not bunched, and a slow call
-/// never lets the next acquire fire early (the slot is clamped to "now", never the
-/// past, so there is no catch-up burst).
+/// interval, so concurrent acquirers are spaced, and a slow call never lets the
+/// next acquire fire early (the slot is clamped to "now", never the past, so
+/// there is no catch-up burst).
 pub struct RateLimiter {
     interval: Duration,
     /// The earliest instant the next request may start. Reserved-and-advanced

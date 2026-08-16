@@ -18,8 +18,7 @@
 # the layers above pull current toolchains at build time regardless, so a digest pin
 # would freeze only one link of a chain that already floats. Runs as root by design:
 # this is an ephemeral, single-tenant Fargate task whose toolchain (rustup/cargo, pip)
-# installs under /root, and it holds no long-lived secrets. There is no multi-tenant
-# surface for privilege separation to protect.
+# installs under /root, and it holds no long-lived secrets.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -74,10 +73,10 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go
 
 # --- Rust + cargo-lambda + zig ----------------------------------------------
 # zig is cargo-lambda's cross-compile linker for the provided.al2023 targets
-# (both aarch64 and x86_64). cargo-lambda is installed from crates.io. These two
-# helper versions (zig, cargo-lambda) are pinned; bump explicitly. rustc itself
-# tracks `stable` at build time, part of the toolchain chain the header notes
-# already floats (the per-run build manifest records the resolved versions).
+# (both aarch64 and x86_64). These two helper versions (zig, cargo-lambda) are
+# pinned; bump explicitly. rustc itself tracks `stable` at build time, so a
+# rebuild can pick up a newer compiler (the per-run build manifest records the
+# resolved versions).
 ARG ZIGLANG_VERSION=0.16.0
 ARG CARGO_LAMBDA_VERSION=1.9.1
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \

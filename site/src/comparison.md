@@ -20,7 +20,7 @@ const cm = colorModel(
 );
 ```
 
-This page collects every cross-language chart, ordered from cold start through warm steady-state to the cost, packaging, and architecture trade-offs. The two Smithy scenarios run on Java, Java SnapStart, Node, and Rust only; Python and Go skip them, so their panels show fewer series.
+Every cross-language chart, ordered from cold start through warm steady-state to the cost, packaging, and architecture trade-offs. The two Smithy scenarios run on Java, Java SnapStart, Node, and Rust only; Python and Go skip them, so their panels show fewer series.
 
 ```js
 const sel = view(filterForm(stats, { colorModel: cm }));
@@ -33,7 +33,7 @@ const v = C.makeView(stats, sel, invalidation);
 
 ## Cold start breakdown: init vs first request
 
-<div class="chart-sub">The cold-start latency split into its two parts at the selected breakdown tier (1024 MB when selected, otherwise the largest selected tier): init (or restore) and the first request. Each segment is a true P50 of its own samples per architecture; with both architectures selected, each language row shows the median of the selected architectures' segment P50s. On the handler-shape scenarios the first request is much slower than a steady warm call (clients, connection pools, TLS, and the JIT all warm up on first use); the lighter segment is that first-request portion.</div>
+<div class="chart-sub">The cold-start latency split into its two parts at the selected breakdown tier (1024 MB when selected, otherwise the largest selected tier): init (or restore) and the first request. Each segment is a true P50 of its own samples per architecture; with both architectures selected, each language row shows the median of the selected architectures' segment P50s. On the scenarios that build clients or run a framework, the first request is much slower than a steady warm call (clients, connection pools, TLS, and the JIT all warm up on first use); on the bare <code>hello</code> handler only the JIT runtimes still show that gap. The lighter segment is that first-request portion.</div>
 
 <div class="chart-sub"><strong>The total, not init alone, is the comparable quantity.</strong> The split is the same one-time setup cost landing in one segment or the other depending on whether a runtime does it <em>eagerly</em> (outside the handler, so it counts as init) or <em>lazily</em> (deferred to the first invocation, so it counts as that request's duration). A low init bar with a large first-request bar is therefore not faster than the reverse. The bar total is the sum of the two segment P50s, which is close to but not identical to the cold-total P50 on the Overview's cold-start chart (percentiles are not additive). Which phase a runtime places that setup in is the subject of <a href="./lifecycle">Cold Start Anatomy</a>.</div>
 
@@ -117,9 +117,8 @@ display(archWinRate(v));
 
 ```js
 // The per-cell detail behind the win-rate above: one dumbbell row per scenario ×
-// memory. It is dense (the verdict is the table), so it is collapsed by default
-// and available on demand. Built into a <details> so it stays on this page in
-// context rather than living on a separate one.
+// memory. Dense enough that the table above is the verdict, so it stays on this
+// page collapsed rather than moving to a page of its own.
 const archDetail = html`<details class="chart-details">
   <summary>
     Per-cell detail: arm64 vs x86_64 dumbbells (cold &amp; warm)

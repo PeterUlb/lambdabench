@@ -50,9 +50,9 @@ def newest_probe_file(kind):
     site loaders' discovery (site/src/lib/results-input.js): the regex is anchored
     on -<digits>-<hex>.json so 'download-scaling' never matches a
     'download-scaling-image' file, and ordering is numeric on <unix_ms> so a
-    9-vs-13-digit clock change cannot misrank. Exits 2 (like the old missing-file
-    behavior) when no matching probe output exists, so the pipeline treats absent
-    data as a hard, visible failure rather than silently passing."""
+    9-vs-13-digit clock change cannot misrank. Exits 2 when no matching probe
+    output exists, so the pipeline treats absent data as a hard, visible failure
+    rather than silently passing."""
     pat = re.compile(rf"^lifecycle-{re.escape(kind)}-(\d+)-[0-9a-f]+\.json$")
     try:
         entries = os.listdir(RESULTS_DIR)
@@ -174,20 +174,37 @@ check(
 # matrix bundle clears the floor by a visible margin, so the "download term only
 # becomes visible once the artifact is genuinely large" claim holds.
 # The `require` above guarantees at least one such cell, so this runs unconditionally.
-big = [c for c in scells if c["zip_bytes"] > 13e6 and c["memory_mb"] == 512]
-over = max(c["residual_p50"] for c in big) - floor
+#
+# Tested as a separation between two GROUPS of cells, not as one cell's p50
+# against the floor. At n=8 a single cell's p50 swings tens of ms run to run
+# (min-max spans of 76-313 ms), so a one-cell margin slides in and out of range on
+# sampling noise; the group medians have held a 52-58 ms separation across runs
+# while individual lifts ranged 48-95 ms. A max-vs-floor test would be worse than
+# either: at n=8 most hello cells' own maxima clear the floor by 60 ms, so it
+# would pass on cells that carry no size effect at all.
+small = [c for c in scells if c["zip_bytes"] < 6e6]
+big = [c for c in scells if c["zip_bytes"] > 13e6]
+small_med = statistics.median(c["residual_p50"] for c in small)
+big_med = statistics.median(c["residual_p50"] for c in big)
+sep = big_med - small_med
+lifts = sorted(c["residual_p50"] - floor for c in big if c["memory_mb"] == 512)
 check(
     "large matrix artifact lift",
-    over >= 60,
-    f"max(14-17MB residual) - floor = {over:.0f} ms (drift if < 60)",
+    sep >= 30,
+    f"median residual {big_med:.0f} ms over {len(big)} cells > 13 MB vs "
+    f"{small_med:.0f} ms over {len(small)} cells < 6 MB (separation {sep:.0f} ms, "
+    f"drift if < 30); the per-cell lift lifecycle.md prints is "
+    f"{lifts[0]:.0f}-{lifts[-1]:.0f} ms",
     "'the ~14-17 MB Java/Python bundles sit <lift> ms above the floor'",
 )
 
 # --- Claim 3: 200 MB residual is of order a second, both families. ---
 # lifecycle.md: "of order a second and up at 200 MB" (the exact per-run values it
-# prints are derived from this JSON). The absolute value swings run to run
-# (measured ~1.0-1.7 s across runs), so the band is wide: this guards "the
-# download term is hundreds of ms to ~2 s at 200 MB", not a precise value.
+# prints are derived from this JSON). The band is set to where "of order a second"
+# would stop being true (half a second under, a couple of seconds over) rather
+# than to the observed magnitudes, which have run 757-1166 ms across runs and
+# families: an order-of-magnitude claim needs an order-of-magnitude band, or every
+# run re-tunes it.
 by_fam = {}
 init_by_fam = {}
 for s in ssamp:
@@ -198,14 +215,14 @@ for fam, sizes in by_fam.items():
         r = sizes[200]
         check(
             f"200 MB residual ({fam})",
-            800 <= r <= 2100,
-            f"{r:.0f} ms (expect 800-2100, of order ~1-2 s)",
+            500 <= r <= 2500,
+            f"{r:.0f} ms (expect 500-2500, of order a second)",
             "'of order a second and up at 200 MB'",
         )
 
-# --- Claim 4: near-linear ~4-8 ms/MB climb past the knee (10 -> 200 MB). ---
-# lifecycle.md: "very roughly 4-8 ms per MB". Slope swings run to run; guard the
-# "near-linear, single-digit ms/MB" shape.
+# --- Claim 4: near-linear ~3-8 ms/MB climb past the knee (10 -> 200 MB). ---
+# lifecycle.md: "very roughly 3-8 ms per MB". Slope swings run to run (and between
+# the two families within one run); guard the "near-linear, single-digit ms/MB" shape.
 for fam, sizes in by_fam.items():
     if 10 in sizes and 200 in sizes:
         slope = (sizes[200] - sizes[10]) / (200 - 10)
@@ -213,7 +230,7 @@ for fam, sizes in by_fam.items():
             f"download slope ({fam})",
             3.0 <= slope <= 11.0,
             f"{slope:.1f} ms/MB over 10-200 MB (expect 3-11)",
-            "'a near-linear climb of very roughly 4-8 ms per MB'",
+            "'a near-linear climb of very roughly 3-8 ms per MB'",
         )
 
 # --- Claim 5: the two runtime families are within noise of each other, so the
@@ -261,9 +278,9 @@ if len(fams) == 2:
 # climbs by roughly an order of magnitude ... If code download were folded into init,
 # that solid line would climb with the dashed one and a 200 MB package's init would
 # be seconds." The residual grows by >1000 ms from 1->200 MB; if download were in
-# init, init would track it. A flat init means the growth is outside the metric,
-# which is the finding. Tolerance is generous (init noise is tens of ms; a real
-# trend would be hundreds+).
+# init, init would track it. A flat init means the growth is outside the metric.
+# Tolerance is generous (init noise is tens of ms; a real trend would be
+# hundreds+).
 for fam, inits in init_by_fam.items():
     if 1 in inits and 200 in inits:
         drift = inits[200] - inits[1]
@@ -276,10 +293,10 @@ for fam, inits in init_by_fam.items():
         )
 
 # --- Claim 6b: the residual climbs ~an order of magnitude from 1 -> 200 MB (the
-# ratio the prose states alongside the flat init). Guard the max family order of
-# magnitude (measured ~8-14x run to run) so a shift that flattened the slope to a
-# small factor trips. lifecycle.md: "roughly an order of magnitude (~8-14x run to
-# run)".
+# ratio the prose states alongside the flat init). Guard the max family ratio
+# (measured 6.8-10.8x across runs and families) so a shift that flattened the
+# slope to a small factor trips. lifecycle.md states the order of magnitude
+# without a numeric band, so this band is the only place it is pinned.
 resid_by_fam = {}
 for s in ssamp:
     resid_by_fam.setdefault(s.get("family", "python"), {})[s["size_mb"]] = s["residual_p50"]
@@ -289,8 +306,8 @@ if ratios:
     check(
         "residual climbs ~order of magnitude (1 -> 200 MB)",
         6.0 <= top <= 18.0,
-        f"max family residual ratio 200MB/1MB = {top:.1f}x (prose says ~8-14x; expect 6-18)",
-        "'the dashed residual climbs by roughly an order of magnitude (~8-14x run to run)'",
+        f"max family residual ratio 200MB/1MB = {top:.1f}x (expect 6-18)",
+        "'the dashed residual climbs by roughly an order of magnitude'",
     )
 
 # --- Claim 6c: the rust/hello wall-clock narrative (the argument that download is
@@ -366,6 +383,24 @@ if have_wait and rh:
         "'the directly measured warm wall-clock W_warm sits above that cell's front-end "
         "lump by just the handler's own Duration, a few ms'",
     )
+    # The heavy end of the same sentence. The page contrasts the trivial cell's
+    # few ms against the probed rows whose handler does real per-invoke work, and
+    # renders that magnitude AND the cell's name from this data. Guard the shape:
+    # the widest warm gap must clear the trivial cell's by enough that "sit
+    # further above their lump" is describing a real difference, not noise.
+    gaps = [
+        (c["w_warm_p50"] - c["warm_rtt_p50"], f"{c['lang']}/{c['scenario']}@{c['memory_mb']}")
+        for c in scells
+    ]
+    top_gap, top_cell = max(gaps)
+    check(
+        "heavy probed row's warm wait sits well above its lump",
+        top_gap >= 20.0,
+        f"widest warm gap = {top_gap:.0f} ms on {top_cell}, vs {gap:.1f} ms on the trivial "
+        f"rust/hello cell (expect >= 20)",
+        "'the probed rows whose handler does real per-invoke work sit further above their "
+        "lump, up to ~<gap> on <cell>' (both derived at build time)",
+    )
     check(
         "rust/hello cold wait well above warm wait",
         cell["w_cold_p50"] > cell["w_warm_p50"] + 50,
@@ -384,16 +419,13 @@ if have_wait and rh:
     )
 
 # --- Claims 7-10: the container-image "Zip vs container image" subsection. ---
-# The image family is a first-class committed input the pipeline refreshes, like
-# the zip families.
-#
 # The exact image magnitudes (touched-init endpoints, residual-floor range, the
 # total-overhead table) are DERIVED from this JSON in lifecycle.md itself, so they
 # cannot go stale against the chart and need no numeric guard here. What remains
 # guardable is the QUALITATIVE finding the prose asserts in words: touched init
 # climbs with size, both residuals stay flat, and the total-overhead ordering
-# flips (zip lower when small, image lower when large). Those are what break if the
-# platform behaviour changes, so those are what we check.
+# flips (zip lower when small, image lower when large). Those are what break if
+# the platform behaviour changes.
 img_init = {}
 img_resid = {}
 for s in isamp:

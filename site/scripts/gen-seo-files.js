@@ -79,7 +79,6 @@ if (patched === 0) {
   );
 }
 
-// Copy the icon originals to the output root for the bare-path convention.
 for (const icon of ROOT_ICONS) {
   await copyFile(join(SRC_DIR, icon), join(OUTPUT_DIR, icon));
 }

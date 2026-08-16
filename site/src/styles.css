@@ -38,9 +38,8 @@
   --theme-foreground-focus: var(--accent);
 }
 
-/* The signature backdrop: a soft radial glow in the top-right over the deep
-   blue-black, fixed so it does not scroll. This is what gives the page depth
-   instead of reading as a flat fill (the old render.mjs page used this). */
+/* Soft radial glow in the top-right over the deep blue-black, fixed so it does
+   not scroll with the content. */
 html {
   background:
     radial-gradient(1200px 600px at 80% -10%, #1a1d24 0%, var(--bg) 55%) fixed,
@@ -501,9 +500,8 @@ table.winrate .winseg:last-child {
 /* Next/prev pager. Framework caps its grid at 640px, which floats it left of
    center under the full-width (`wide`) layout. Span the full content width so the
    cards anchor to the left and right edges, matching the full-bleed charts and
-   the footer disclaimer below. Each card is a substantial, fixed-size navigation
-   card (the common docs-site pattern: Stripe / GitHub / Vercel), not text shrunk
-   to its label. */
+   the footer disclaimer below. Each card keeps a fixed size rather than shrinking
+   to its label width (the common docs-site pattern: Stripe / GitHub / Vercel). */
 #observablehq-footer nav {
   max-width: none;
 }

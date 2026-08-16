@@ -9,7 +9,6 @@ description = "LambdaBench CoffeeShop Rust server codegen."
 dependencies {
     val smithyRsVersion: String by project
 
-    // Code generator
     smithyBuild("software.amazon.smithy.rust:codegen-server:$smithyRsVersion")
 
     // Service model

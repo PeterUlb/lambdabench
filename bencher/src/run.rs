@@ -211,9 +211,8 @@ async fn run_cell(
     sizes: crate::deploy::ArtifactSizes,
     writer: &ResultsWriter,
 ) -> Result<()> {
-    // Resolve the cold/warm counts that apply to THIS cell under the run's
-    // profile. The pool size is a run-wide concurrency knob, never per-cell. Only
-    // the iteration counts vary per cell; the retry/buffering structure is shared.
+    // The pool size is a run-wide concurrency knob, never per-cell; only the
+    // iteration counts vary per cell.
     let (cold, warm) = cell.iterations(params.profile);
     let counts = Counts { cold, warm };
 
@@ -598,8 +597,8 @@ async fn force_cold_invoke(
             cell.function_name(),
             report.request_id,
         );
-        // Escalating backoff: BASE * attempt, capped. Spreads the later retries
-        // across the data-plane propagation window instead of bunching them.
+        // Spreads the later retries across the data-plane propagation window
+        // instead of bunching them.
         let backoff = (COLD_FORCE_RETRY_BACKOFF_BASE * attempt).min(COLD_FORCE_RETRY_BACKOFF_CAP);
         tokio::time::sleep(backoff).await;
     }

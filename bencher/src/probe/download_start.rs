@@ -254,7 +254,6 @@ fn resolve_targets(args: &DownloadStartArgs, arch: Arch) -> Result<Vec<Cell>> {
     // Validate --memory values against the swept tiers up front (like select_cells).
     config::validate_memory_tiers(&args.memory).map_err(anyhow::Error::msg)?;
 
-    // Build the desired (lang, scenario, memory) set.
     let wanted: Vec<(Lang, Scenario, i32)> = match &args.only {
         None => {
             if args.memory.is_empty() {

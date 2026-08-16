@@ -10,7 +10,7 @@
 //   - MEDIAN = each language's standard JSON-parser speed, which dominates. Go
 //     decodes with the reflection-based stdlib `encoding/json` into a typed
 //     []record, several times slower than Rust's compile-time-monomorphized
-//     serde; that parse, not the group-by, is essentially all of Go's batch
+//     serde; that parse, not the group-by, is nearly all of Go's batch
 //     median. Decoding into a typed struct slice (not a generic map tree) keeps
 //     the live graph representative. We keep `encoding/json` because it is Go's
 //     standard parser; a faster third-party decoder would compare libraries.
@@ -100,9 +100,8 @@ func processBatch(payload []byte) (response, error) {
 		a.count++
 		total += r.Value
 	}
-	// Emit a compact summary: per-group totals plus headline figures. Building
-	// the output slice is itself allocation proportional to group count,
-	// mirroring what a real batch processor would hand downstream.
+	// Building the output slice is itself allocation proportional to group
+	// count, mirroring what a real batch processor would hand downstream.
 	perGroup := make([]group, 0, len(groups))
 	for k, a := range groups {
 		perGroup = append(perGroup, group{Key: k, Sum: a.sum, Count: a.count})

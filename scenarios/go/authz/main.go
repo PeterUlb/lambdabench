@@ -132,9 +132,8 @@ func keyFromJWK(raw []byte) (*rsa.PublicKey, error) {
 }
 
 // authorize verifies one token's signature + iss/aud/exp and extracts the
-// configured claims with type mapping. Returns the extracted claim map. This is
-// the full authorizer hot path: the verify is native-crypto-bound, the
-// extraction is in-language.
+// configured claims with type mapping. This is the full authorizer hot path:
+// the verify is native-crypto-bound, the extraction is in-language.
 func (s *state) authorize(token string) (map[string]interface{}, error) {
 	// 1. Signature + standard-claim verification (RS256, native RSA + SHA-256).
 	claims := jwt.MapClaims{}
@@ -145,8 +144,7 @@ func (s *state) authorize(token string) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	// 2. Claim extraction + type mapping (in-language), mirroring a real
-	//    authorizer preparing claims for a policy engine.
+	// 2. Claim extraction + type mapping (in-language).
 	extracted := make(map[string]interface{})
 	for _, c := range claimConfig {
 		value, ok := claims[c.name]

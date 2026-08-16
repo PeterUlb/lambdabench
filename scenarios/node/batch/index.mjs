@@ -15,7 +15,8 @@
 //     builds the full record graph, and the group Map plus the per-group output
 //     array are all live simultaneously for the whole invoke, a large transient
 //     heap V8 must allocate, promote to old-gen, then collect at invoke end: the
-//     major-GC path that can stall the warm tail. A non-GC runtime just drops it.
+//     major-GC path that can stall the warm tail. A non-GC runtime drops it at
+//     end of scope.
 //
 // Contrast lettercount, which counts into a fixed 26-element array (nothing
 // grows). Fetching the batch at init keeps the warm measurement pure compute. The

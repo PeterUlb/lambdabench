@@ -101,7 +101,7 @@ impl Aws {
     /// Deliberately separate from `reclaim_orphaned_kms_keys`, which teardown calls
     /// as its own step: that sweep is best-effort and account/region-wide (it walks
     /// keys we never created), so folding it into this `Result` would report this
-    /// step as failed - hiding that the key + alias were in fact torn down -
+    /// step as failed (hiding that the key and alias were in fact torn down)
     /// whenever the sweep alone hits trouble.
     pub async fn delete_kms_key(&self) -> Result<()> {
         let key_id = self

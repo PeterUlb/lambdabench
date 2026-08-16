@@ -1,6 +1,6 @@
 # authz scenario crypto fixtures
 
-These files are **generated at build time, not committed**: they contain an RSA
+These files are generated at build time and not committed: they contain an RSA
 private key (PEM) and a signed JWT, which could trip secret-scanning push protection
 even though they are a throwaway benchmark key that guards nothing.
 
@@ -38,25 +38,25 @@ outputs exist) or copies the already-generated JWK in:
   authz package dir before `go build` (Go's `//go:embed` cannot reference paths
   outside the module).
 
-Node is a required toolchain dependency, so there is no new prerequisite.
+`generate.mjs` needs no extra prerequisite: Node is already required by the
+toolchain.
 
 The key is per-machine (each clone generates its own), which is fine: the signer
 (`generate.mjs`) and the verifiers (the handlers, which embed the locally-
 generated public JWK) always share one local key, and the benchmark never
-compares tokens across machines. The token guards nothing, grants no access, and
-is not used by any real system.
+compares tokens across machines. The token is not used by any real system.
 
 ## Validation rules (kept identical across languages)
 
 For the `authz` measurement to be fair, every language's verifier must do the
-same validation work per invoke, so every language's handler enforces one canonical rule
+same validation work per invoke, so each handler enforces one canonical rule
 set. The generated token satisfies all of them (it is signed RS256, carries a
 far-future `exp`, a past `nbf`, and the expected `iss`/`aud`), so each verifier
 takes the accept path and does equivalent work:
 
 - **Algorithm:** RS256 only. Each handler pins it explicitly so a token-header
-  algorithm downgrade (RS384/PS256/…) is rejected, not just whatever the RSA key
-  can verify.
+  algorithm downgrade (RS384/PS256/…) is rejected instead of being accepted on
+  the strength of the RSA key alone.
 - **`exp`:** required and validated (an absent or expired `exp` is rejected).
 - **`nbf`:** validated when present (a not-yet-valid token is rejected).
 - **Clock leeway:** 60 s, applied to both `exp` and `nbf`.

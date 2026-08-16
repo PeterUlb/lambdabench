@@ -2,7 +2,7 @@
 //
 // The data loader (src/data/stats.json.js) aggregates the raw run at BUILD time
 // into a compact JSON; every page renders that JSON client-side, so the heavy
-// 150 MB / 1.4M-row gz is touched exactly once per build and never shipped.
+// ~100 MB / multi-million-row gz is touched exactly once per build and never shipped.
 
 // Single source of truth for the site's domain. Used to build the canonical
 // origin, the title bar, and the social/site-name tags. Defaults to the live
@@ -64,7 +64,7 @@ function normalizePagePath(path) {
 
 // Map a configured page path to the path actually served. With
 // `preserveExtension: true` (see default export), Framework formats every
-// internal link as "/foo.html", which maps 1:1 to the built S3 object - so the
+// internal link as "/foo.html", which maps 1:1 to the built S3 object, so the
 // static host needs no clean-URL edge rewrite. The root stays "/" (served via
 // CloudFront's defaultRootObject = index.html). Canonical/OG/sitemap URLs are
 // built by hand here and in gen-seo-files.js, bypassing Framework's link
@@ -74,7 +74,6 @@ export function servedPath(path) {
   return path.endsWith(".html") ? path : `${path}.html`;
 }
 
-// Build the absolute canonical URL for a page path.
 function canonicalUrl(path) {
   return `${SITE_URL}${servedPath(path)}`;
 }
@@ -114,7 +113,7 @@ function datasetJsonLd() {
 
 // Function-form head: Framework calls this per page with the normalized path,
 // the resolved title, and the page's frontmatter (`data`). It centralizes every
-// SEO/social tag so individual pages only need a `title` and `description`.
+// SEO/social tag so individual pages only need a `title`.
 function head({ title, path }) {
   path = normalizePagePath(path);
   const pageTitle = [title, DOMAIN].filter(Boolean).join(" | ");
@@ -167,8 +166,8 @@ export default {
   // object. This lets a private-S3 + CloudFront (OAC) host serve the site with
   // no clean-URL rewrite function at the edge. The home link stays "/".
   preserveExtension: true,
-  // The benchmark is a fixed dataset, not a live dashboard: a static toc + the
-  // default sidebar is enough. Pages are listed explicitly for ordering.
+  // The benchmark is a fixed dataset, so a static toc + the default sidebar is
+  // enough. Pages are listed explicitly for ordering.
   pages: [
     { name: "Overview", path: "/" },
     { name: "Comparison", path: "/comparison" },

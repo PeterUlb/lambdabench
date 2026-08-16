@@ -24,11 +24,11 @@ import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
  * A failed run beats wrong data.
  *
  * <p>For SnapStart, the handler primes itself via a CRaC {@code beforeCheckpoint}
- * hook (running one real invocation during init, so the SDK's lazy class loading,
- * marshaller construction, and JIT are baked into the snapshot rather than paid
- * on the first restored invoke. The realistic config an operator who enables
- * SnapStart would ship). The hook fires only when a snapshot is taken; on a plain
- * function {@code org.crac} uses a no-op context, so the same jar is unprimed.
+ * hook (one real invocation during init, baking the SDK's lazy class loading,
+ * marshaller construction, and JIT into the snapshot rather than paying them on
+ * the first restored invoke, the realistic config for an operator who enables
+ * SnapStart). The hook fires only when a snapshot is taken; on a plain function
+ * {@code org.crac} uses a no-op context, so the same jar is unprimed.
  */
 public final class OneClientHandler implements RequestHandler<Object, Map<String, Object>>, Resource {
 

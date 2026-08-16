@@ -25,8 +25,6 @@ dependencies {
     implementation("software.amazon.smithy.java:aws-server-restjson:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:server-rpcv2-cbor:$smithyJavaVersion")
 
-    // The realistic write flow: three AWS SDK v2 clients (URL-connection client
-    // only, no Netty/Apache).
     implementation(platform("software.amazon.awssdk:bom:2.31.6"))
     implementation("software.amazon.awssdk:dynamodb")
     implementation("software.amazon.awssdk:kms")

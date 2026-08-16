@@ -140,9 +140,8 @@ public final class BatchHandler implements RequestHandler<Object, Map<String, Ob
                 total += r.value;
                 recordCount++;
             }
-            // Emit per-group totals plus headline figures. Building the output
-            // allocates proportional to group count, mirroring what a real batch
-            // processor hands downstream.
+            // Building the output allocates proportional to group count,
+            // mirroring what a real batch processor hands downstream.
             List<Map<String, Object>> perGroup = new ArrayList<>(groups.size());
             for (Map.Entry<String, Agg> e : groups.entrySet()) {
                 Map<String, Object> g = new HashMap<>();

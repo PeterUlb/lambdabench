@@ -27,8 +27,11 @@
 //! are illustrative, environment-dependent magnitudes (single client, single
 //! account; the absolute values depend on where the caller sits relative to the
 //! region and the control-plane's state), and a roughly-constant residual swamped
-//! by provisioning noise is a legitimate outcome, not a failure. The probe targets
-//! ALREADY-DEPLOYED matrix functions and deploys nothing.
+//! by provisioning noise is a legitimate outcome, not a failure. The
+//! `download-start` mode targets ALREADY-DEPLOYED matrix functions and deploys
+//! nothing; the `download-scaling` modes provision ephemeral padded functions
+//! (and, with `--with-image`, an ECR repository) of their own, which teardown
+//! reclaims.
 //!
 //! Module layout:
 //! - [`sample`]: the shared measurement core (one cold sample, its aggregation,

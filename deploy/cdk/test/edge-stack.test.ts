@@ -5,8 +5,7 @@ import { EdgeStack } from "../lib/edge-stack";
 // Locks the security posture of the edge resources: the WAF Web ACL must
 // actually enforce its managed rule groups (overrideAction `none`, not `count`),
 // and the certificate must validate via DNS against the supplied zone. A
-// regression to count-mode would silently turn the WAF into a no-op, so it is
-// asserted explicitly.
+// regression to count-mode would silently turn the WAF into a no-op.
 describe("EdgeStack", () => {
   const app = new cdk.App();
   const stack = new EdgeStack(app, "TestEdgeStack", {
@@ -33,8 +32,8 @@ describe("EdgeStack", () => {
       Rules: Match.arrayWith(
         expected.map((name) =>
           Match.objectLike({
-            // `none` keeps each managed group on its own rule actions; `count`
-            // would observe-only and defeat the WAF. Assert it is absent.
+            // `none` keeps each managed group on its own rule actions;
+            // `count` would leave it observe-only.
             OverrideAction: { None: {} },
             Statement: {
               ManagedRuleGroupStatement: { VendorName: "AWS", Name: name },

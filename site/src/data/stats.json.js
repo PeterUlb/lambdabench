@@ -1,9 +1,10 @@
-// Build-time data loader: reads the raw lambdabench run (of order 100 MB gz / ~10^6 rows)
-// off disk line by line (gunzip + readline), projects each row to the columns
-// the charts need, and hands the projection to aggregate() to compute a compact
-// JSON (a few hundred KB). The read is streamed; the projected rows are
-// materialized (walked several times to build the different aggregate families).
-// The only place that touches raw rows, so the heavy file is never shipped.
+// Build-time data loader: reads the raw lambdabench run (of order 100 MB gz /
+// millions of rows) off disk line by line (gunzip + readline), projects each row
+// to the columns the charts need, and hands the projection to aggregate() to
+// compute a compact JSON (a few hundred KB). The read is streamed; the projected
+// rows are materialized (walked several times to build the different aggregate
+// families). The only place that touches raw rows, so the heavy file is never
+// shipped.
 //
 // A thin I/O shell: input discovery, streaming, the meta completeness gate, and
 // stdout. All transform logic lives in ../lib/aggregate.js for unit testing.

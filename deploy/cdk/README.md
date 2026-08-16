@@ -1,7 +1,7 @@
 # LambdaBench hosting + runner CDK app
 
 Infrastructure for hosting the LambdaBench site and running the benchmark on demand.
-See **[../README.md](../README.md)** for the full setup, the one-time console steps, and the run workflow.
+See [../README.md](../README.md) for the full setup, the one-time console steps, and the run workflow.
 
 Stacks (`bin/cdk.ts`):
 

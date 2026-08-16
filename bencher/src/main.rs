@@ -213,7 +213,6 @@ async fn doctor(repo_root: &Path) -> Result<()> {
     }
 }
 
-/// Builds the unique artifacts for the full matrix.
 /// Parses the repeated/comma-separated `--lang` values into `Lang` variants. An
 /// empty input yields an empty vec, meaning "all languages" downstream.
 fn parse_langs(values: &[String]) -> Result<Vec<Lang>> {
@@ -273,7 +272,7 @@ async fn cmd_run(repo_root: &Path, args: RunArgs) -> Result<()> {
     }
 
     // Only the artifacts those selected cells need (deduped): a single-scenario
-    // run builds/deploys a handful of functions, not hundreds.
+    // run builds/deploys a handful of functions instead of the full matrix.
     let keys = config::unique_artifacts(&cells);
 
     // Build (or reuse existing dist/ with --skip-build).
@@ -394,7 +393,7 @@ async fn cmd_run(repo_root: &Path, args: RunArgs) -> Result<()> {
     // Record what landed and the terminal status, so a reader can tell a complete
     // dataset from one truncated by an aborted run. The finish time and
     // recorded-row count are stamped for both outcomes; `status` distinguishes
-    // them, so a failed run is never mislabeled as complete.
+    // them.
     meta.finished_at_unix_ms = Some(config::now_unix_ms());
     meta.total_invocations_recorded = writer.rows_written();
     meta.status = if outcome.is_ok() {

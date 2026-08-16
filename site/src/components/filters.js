@@ -5,8 +5,8 @@
 import { html } from "npm:htl";
 import { langLabel, scenarioLabel } from "../lib/format.js";
 
-// Build a labelled checkbox group. `colorFor` (optional) tints each label by its
-// value so language toggles match the chart palette.
+// `colorFor` (optional) tints each label by its value so language toggles match
+// the chart palette.
 function checkGroup(name, values, labelFn, { colorFor } = {}) {
   const boxes = values.map((v) => {
     const input = html`<input
@@ -25,12 +25,11 @@ function checkGroup(name, values, labelFn, { colorFor } = {}) {
   return { boxes, inputs: boxes.map((b) => b.querySelector("input")) };
 }
 
-// Build the reactive filter form. `groups` selects which controls to show
-// (default: all four). A page whose charts only vary on a subset (e.g. the
-// Rust-only opt-level page) passes a subset like
-// `["architectures", "scenarios", "memories"]`. Hidden groups are not rendered
-// but still report every value as selected, so a chart reading `sel.languages`
-// works without special-casing.
+// `groups` selects which controls to show (default: all four). A page whose
+// charts only vary on a subset (e.g. the Rust-only opt-level page) passes a
+// subset like `["architectures", "scenarios", "memories"]`. Hidden groups are
+// not rendered but still report every value as selected, so a chart reading
+// `sel.languages` works without special-casing.
 export function filterForm(stats, { colorModel, groups } = {}) {
   const dim = stats.dimensions;
   const langColor = colorModel ? colorModel.langColor : null;

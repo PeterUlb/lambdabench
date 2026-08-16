@@ -563,7 +563,8 @@ export const tailLatency = (v) =>
 // GC signature (README: batch's GC tail is "secondary"). Including it would
 // invite the high-tail-means-GC overread this chart avoids.
 //
-// Log y-axis: cache warm P99 spans ~5 ms (Rust) to ~970 ms (Java) in one panel,
+// Log y-axis: in one panel the cache warm P99 runs from single-digit ms on the
+// non-GC runtime to several hundred on the GC'd ones (two orders of magnitude),
 // which a zero-based linear scale would flatten into a sliver. The cause (GC) is
 // asserted in prose only; the chart shows tail-vs-median behavior, not a cause.
 const TAIL_SPREAD_SCENARIOS = ["cache"];
@@ -1140,8 +1141,8 @@ export function syntheticDownloadScaling(data, invalidation) {
               curve: "monotone-x",
             }),
             Plot.dot(s, { x: "size_mb", y: "residual_p50", fill: c, r: 4 }),
-            // Solid = the reported Init Duration, plotted so its flatness against
-            // the climbing residual is visible, not just asserted in prose.
+            // Solid = the reported Init Duration, plotted so its flatness
+            // against the climbing residual is visible on the chart.
             Plot.lineY(s, {
               x: "size_mb",
               y: "init_p50",
@@ -1192,9 +1193,9 @@ export function syntheticDownloadScaling(data, invalidation) {
 // artifact-size cost lands. Two lines per series with a fixed convention:
 //   SOLID  = reported Init Duration (init_p50)
 //   DASHED = unreported pre-init residual (residual_p50; download + environment start)
-// The story reads off the chart: the zip's dashed line (its hidden download)
-// climbs ~linearly while its solid init stays flat; the image's dashed line
-// stays a flat floor while its touched solid init climbs. `imageData` carries
+// The zip's dashed line (its hidden download) climbs ~linearly while its solid
+// init stays flat; the image's dashed line stays a flat floor while its touched
+// solid init climbs. `imageData` carries
 // {family: image-touched|image-untouched, size_mb, init_p50, residual_p50}.
 export function zipVsImageDownloadScaling(imageData, invalidation) {
   // Zip baseline is the python family sliced from the same `--with-image` run
@@ -1571,18 +1572,19 @@ export function optDumbbell(v, { metric }) {
 // baseline) and jitter=on (the diagnostic build), split into init vs
 // first-request segments.
 //
-// Showing the two segments, not just the total, is the point: which segment the
-// tax lands in is the story. Empirically Lambda's two cold-start phases appear to
-// run on different CPU envelopes: Init phase ~ full vCPU regardless of tier;
-// Invoke phase = the tier's fractional vCPU. (Init-phase boost from re:Invent
-// 2019, not a contract; the caption above the chart carries the disclaimer.)
+// Both segments are drawn rather than the total alone, because which segment the
+// tax lands in differs between the two scenarios. Empirically Lambda's two
+// cold-start phases appear to run on different CPU envelopes: Init phase ~ full
+// vCPU regardless of tier; Invoke phase = the tier's fractional vCPU.
+// (Init-phase boost from re:Invent 2019, not a contract; the caption above the
+// chart carries the disclaimer.)
 //   - oneclient: tax lands in firstReq (TLS handshake in the Invoke phase) -> a
 //     cliff that grows steeply as memory shrinks.
 //   - lettercount: tax lands in init (TLS handshake in the Init phase,
 //     measured-cheaper today) -> a roughly flat bump across tiers.
 // The chart shape (cliff vs flat bump) is what is measured; the phase-CPU
-// asymmetry is the most parsimonious explanation. Same one-time CPU cost, two
-// wall-clock outcomes.
+// asymmetry is the most parsimonious explanation for the same one-time CPU cost
+// producing two wall-clock outcomes.
 //
 // Per-panel subtitle: the scenario IDs name the handler shape, not the phase the
 // TLS handshake lands in, yet the phase is the entire reason the two panels
@@ -1612,14 +1614,14 @@ export function jitterCliff(v) {
     .sort();
   if (!archs.length) return document.createElement("div");
 
-  // Ascending memory order (128 at top -> 3008 at bottom) so the eye travels in
-  // the direction of the story: the cliff is worst at the lowest tier and shrinks
-  // as memory grows. Matches the small->large convention on the other x-axes.
+  // Ascending memory order (128 at top -> 3008 at bottom): the cliff is worst at
+  // the lowest tier and shrinks as memory grows, so the eye travels down it.
+  // Matches the small->large convention on the other x-axes.
   const memories = v.memories.slice().sort((a, b) => a - b);
 
   // Build the per-panel data first to derive a shared x-domain across both
   // panels. Independent x-scales would stretch each panel to its own range and
-  // hide the equal-sized "tax" segment, which is the headline of this chart.
+  // hide that the "tax" segment is the same size in both.
   const panels = [];
   let sharedMax = 0;
   for (const scenario of scenarios) {
@@ -1675,8 +1677,8 @@ export function jitterCliff(v) {
             total: cell.initP50 + cell.firstReqP50,
           });
         }
-        // The on-row carries the headline +Δ tax; render it inline at the end of
-        // the on bar so readers don't subtract two totals to see the cost.
+        // The on-row carries the +Δ tax; render it inline at the end of the on
+        // bar so readers don't subtract two totals to see the cost.
         if (offTotal != null && onTotal != null) {
           deltas.push({
             row: `${arch} · ${m}MB · jitter on`,

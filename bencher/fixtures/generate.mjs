@@ -9,8 +9,8 @@
 // even though they are a throwaway benchmark key that guards nothing. Generating
 // them at build time keeps them out of git entirely (they are gitignored).
 //
-// The key is deterministic ONLY in purpose, not in bytes: each machine generates
-// its own keypair. That is fine: the signer (this script) and the verifiers
+// Each machine generates its own keypair, so the fixture bytes differ from
+// machine to machine. That is fine: the signer (this script) and the verifiers
 // (the handlers, which import the generated public JWK) always share one local
 // key, and the benchmark never compares tokens across machines.
 
@@ -113,21 +113,20 @@ if (force || missing()) {
 // Generates one RSA keypair and writes all three fixtures. Callers must hold the
 // lock so the keypair and the token it signs are always written as a set.
 function generate() {
-  // 1. RSA-2048 keypair (what a real OIDC IdP uses for RS256).
+  // RSA-2048 is what a real OIDC IdP uses for RS256.
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 
-  // 2. Public key as a JWK, tagged with the kid/alg the handlers expect.
+  // The kid/alg tags are what the handlers match on.
   const jwk = publicKey.export({ format: "jwk" });
   jwk.kid = KID;
   jwk.alg = "RS256";
   jwk.use = "sig";
 
-  // 3. Private key PEM (PKCS#8), used to sign the token below.
   const privPem = privateKey.export({ format: "pem", type: "pkcs8" });
 
-  // 4. A single signed RS256 JWT with a realistic OIDC-style claim set, mirroring
-  //    what the bencher sends in the invoke payload. Fixed wide iat/exp bounds so
-  //    it stays valid for the life of the benchmark (these are benchmark tokens).
+  // A single signed RS256 JWT with a realistic OIDC-style claim set, mirroring
+  // what the bencher sends in the invoke payload. Fixed wide iat/exp bounds so it
+  // stays valid for the life of the benchmark (these are benchmark tokens).
   const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const header = { alg: "RS256", typ: "JWT", kid: KID };
   const payload = {

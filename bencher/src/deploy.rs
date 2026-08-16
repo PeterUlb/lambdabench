@@ -24,9 +24,9 @@ pub struct ArtifactSizes {
 
 /// Computes the per-cell artifact sizes from the built artifacts, without
 /// touching AWS. Used by `run --skip-deploy`, which needs the size map for the
-/// results metadata but does not re-provision. Same lookup `deploy` does inline.
-/// Fails loud if a cell has no matching artifact rather than recording
-/// placeholder sizes.
+/// results metadata but does not re-provision, and by `deploy`, so the two
+/// paths cannot disagree. Fails loud if a cell has no matching artifact rather
+/// than recording placeholder sizes.
 pub fn sizes_from_artifacts(
     artifacts: &BTreeMap<String, Artifact>,
     cells: &[Cell],
@@ -93,12 +93,10 @@ pub async fn deploy(
 
     println!("Deploying {} functions...", cells.len());
 
-    // Per-cell artifact sizes for the results metadata. Same lookup the
-    // --skip-deploy path uses, so the two cannot disagree (fails loud if a cell
-    // has no matching artifact).
+    // Per-cell artifact sizes for the results metadata.
     let sizes = sizes_from_artifacts(artifacts, cells)?;
 
-    // Map each cell to its artifact's zip bytes (read once per artifact).
+    // Read each artifact's zip once; cells sharing an artifact share the bytes.
     let mut zip_cache: BTreeMap<String, Arc<Vec<u8>>> = BTreeMap::new();
     for art in artifacts.values() {
         let bytes = std::fs::read(&art.zip_path)
@@ -133,7 +131,6 @@ pub async fn deploy(
     .collect()
     .await;
 
-    // Fail loud on any deployment error.
     for r in results {
         r?;
     }

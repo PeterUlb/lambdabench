@@ -10,8 +10,8 @@
 #   1. It is in-language CPU work. The counting is a tight loop over each string's
 #      characters, running in CPython's bytecode interpreter (vs Rust machine code
 #      / the V8 JIT) rather than a shared native library. A hashing-heavy workload
-#      would spend most time in native C/OpenSSL shared by both, measuring the
-#      library not the language.
+#      would spend most time in native C/OpenSSL shared by every runtime,
+#      measuring the library not the language.
 #   2. json.loads rebuilds a fresh object graph each invoke, so under a constrained
 #      heap a GC'd runtime may show pauses in the warm tail while a non-GC runtime
 #      stays flat.

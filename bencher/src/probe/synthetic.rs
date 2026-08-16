@@ -212,11 +212,11 @@ fn build_padded_zip(rt: SynthRuntime, base: &[u8], size_mb: u32) -> Result<Vec<u
 /// so a second full-size buffer is never held. Dependency-free SplitMix64 with a
 /// fixed seed (there is no `rand` dep), so builds are deterministic.
 ///
-/// Incompressibility is the point: a zero-filled or repetitive blob would
-/// compress/dedupe below the zip (`Stored`) or in a container image's gzip layer
-/// on push, so the transferred size would fall far below the target and understate
-/// the download term. SplitMix64 output does not compress, so the on-the-wire size
-/// is the true download size. Shared by the zip padding (`build_padded_zip`) and
+/// A zero-filled or repetitive blob would compress/dedupe below the zip
+/// (`Stored`) or in a container image's gzip layer on push, so the transferred
+/// size would fall far below the target and understate the download term.
+/// SplitMix64 output does not compress, so the on-the-wire size is the true
+/// download size. Shared by the zip padding (`build_padded_zip`) and
 /// the container-image padding (`write_padding_file`).
 pub(super) fn write_incompressible<W: std::io::Write>(
     sink: &mut W,

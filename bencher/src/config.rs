@@ -590,8 +590,8 @@ impl Opt {
 /// same one-time cost in opposing lifecycle phases (the `oneclient` Invoke-phase
 /// cliff vs the `lettercount` Init-phase flat bump).
 ///
-/// Disabling it is a latency/security trade-off, not a default: it drops one of
-/// AWS-LC's entropy sources. One independent source always remains (the OS); a
+/// Disabling it buys latency at a security cost: it drops one of AWS-LC's
+/// entropy sources. One independent source always remains (the OS); a
 /// second (`RDRAND`/`RNDR`) only where the CPU has a hardware RNG, which arm64
 /// Graviton2 lacks, so on that part the two seeding slots both fall back to the
 /// OS and are no longer independent (see the README jitter Finding / rust.md).
@@ -1302,12 +1302,11 @@ mod tests {
                 c.artifact_key().label()
             );
         }
-        // Every Rust cell carries Some(jitter); every non-Rust cell carries
-        // None. jitter=Off must NOT add a tag to names/labels, so the headline
-        // matrix is named the same way regardless of whether the diagnostic A/B
-        // is in scope (otherwise jitter=Off + jitter=On would split into two
-        // chart cells under the same `series|scenario|memory` key without the
-        // site noticing).
+        // jitter=Off must NOT add a tag to names/labels, so the headline matrix
+        // is named the same way regardless of whether the diagnostic A/B is in
+        // scope (otherwise jitter=Off + jitter=On would split into two chart
+        // cells under the same `series|scenario|memory` key without the site
+        // noticing).
         for c in &cells {
             match c.lang {
                 Lang::Rust => assert!(c.jitter.is_some(), "rust cells must carry jitter"),
@@ -1359,7 +1358,6 @@ mod tests {
         let managed: std::collections::HashSet<String> =
             all_managed_function_names().into_iter().collect();
 
-        // Every matrix function is present.
         for c in all_cells() {
             assert!(
                 managed.contains(&c.function_name()),
@@ -1368,7 +1366,6 @@ mod tests {
             );
         }
 
-        // Every synthetic default-size family (zip + image) is present.
         for family in SYNTH_ZIP_FAMILIES.iter().chain(SYNTH_IMAGE_FAMILIES) {
             for &mb in SYNTH_DEFAULT_SIZES_MB {
                 let name = synth_function_name(family, mb);
