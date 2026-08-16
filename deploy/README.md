@@ -76,7 +76,7 @@ there; SiteStack references both cross-region.
 
 | Path               | What it is                                                                                                  |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `cdk/`             | CDK app: `EdgeStack`, `SiteStack`, `BenchRunnerStack`.                                                      |
+| `cdk/`             | CDK app: stacks `LambdaBenchEdgeStack`, `LambdaBenchSiteStack`, `LambdaBenchRunnerStack`.                    |
 | `Dockerfile`       | Benchmark-runner image (full toolchain + awscli). Built by `cdk deploy` as a Docker asset, for linux/amd64. |
 | `run-benchmark.sh` | Container entrypoint: the full pipeline + site publish.                                                     |
 | `run.sh`           | Launch one on-demand run via `aws ecs run-task`.                                                            |
@@ -102,6 +102,7 @@ npx cdk deploy --all \
   -c siteDomain=bench.example.com \
   -c hostedZoneId=Z0123456789ABCDEFGHIJ \
   -c repoUrl=https://github.com/you/lambdabench
+#   swap deploy for synth to render the templates without touching the account.
 #   repoUrl is injected as LAMBDABENCH_REPO_URL so the footer links "Source on GitHub".
 # optional: -c contactEmail=you@example.com
 #   injected as LAMBDABENCH_CONTACT_EMAIL so the published site shows a "Contact"
@@ -141,13 +142,18 @@ There is no separate build-and-push step. The runner image is a CDK Docker asset
 the CDK bootstrap assets repository (`cdk-hnb659fds-container-assets-<account>-<region>`, created
 by `cdk bootstrap`), and wires the resulting URI into the Fargate task definition.
 
+Redeploy before the next run whenever the source the task should run has changed. `run.sh`
+launches the deployed task definition as-is and builds nothing, so `npx cdk deploy
+LambdaBenchRunnerStack` (with the full `-c` set, see "Deploy-time context") is the step that puts
+new source in front of a run. The build context is the repo root, so `bencher/`, `site/`, and
+`run-benchmark.sh` count as much as the `Dockerfile` does.
+
 The tag CDK assigns is a content hash of the build context:
 
 - The image carries the repo (`COPY . /lambdabench`), so the hash identifies which source the
   Fargate task runs.
 - A source change produces a different hash, so it cannot overwrite the previous image. The
   bootstrap assets repo is `IMMUTABLE`.
-- The task moves to a new image only when a `cdk deploy` pushes one.
 - `.dockerignore` at the repo root is honored for both the hash and the staged context, so build
   output and caches neither bloat the asset (~3.6 MB staged) nor churn the hash.
 
