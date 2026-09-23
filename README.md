@@ -3,7 +3,7 @@
 > Published at [lambdabench.dev](https://lambdabench.dev). An independent personal project, not
 > affiliated with or endorsed by AWS or any vendor; the numbers are best-effort measurements,
 > provided as-is with no guarantee of accuracy
-> ([full disclaimer](https://lambdabench.dev/appendix#disclaimer)).
+> ([full disclaimer](https://lambdabench.dev/appendix.html#disclaimer)).
 
 Benchmarks **whole Lambda scenarios** (not just empty cold starts) across language, architecture,
 and memory, for **Rust**, **Node 24**, **Java 25**, **Python 3.14**, and **Go**, measuring both
@@ -180,7 +180,7 @@ ASCII-only counting, symmetric native crypto, and the SHA-trap that motivated th
 - **Architectures:** arm64, x86_64
 - **Optimization (Rust only):** `opt-level=3` (speed) vs `opt-level=z` (size). Which cold-starts faster is scenario-dependent, so both are measured. One caveat: the smaller artifact's faster-download advantage lands in the download-and-unpack phase, which no REPORT metric isolates (see the timings note under [How it works](#how-it-works)). So this A/B captures the *loaded-code* trade-off (init link/load + warm execution speed), not total cold start including download. Node, Java, Python, and Go have no equivalent knob.
 
-  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as actually-loaded code, never as inert bytes. So the matrix never pads an artifact with dead filler to "isolate size" (the probe section above and DESIGN.md point here for that rule). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows.
+  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as actually-loaded code, never as inert bytes. So the matrix never pads an artifact with dead filler to "isolate size" (the probe section above and DESIGN.md point here for that rule). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle.html): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows.
 - **`aws-lc-rs` jitter-entropy A/B (Rust only, scoped):** every Rust binary in the matrix is built with `AWS_LC_SYS_NO_JITTER_ENTROPY=1`, which drops the AWS-LC CPU-jitter entropy source to recover its cold-start latency cost (a latency/security trade-off, not a universal win). A second variant with the seeding *enabled* is built only for `oneclient` and `lettercount` × o3 × both arches × all memory tiers, because those two scenarios place the same one-time cost in *opposing* Lambda lifecycle phases (the cliff in the Invoke phase vs the flat bump in the Init phase); other scenarios would just repeat one of them. The full mechanism, the trade-off, and the SnapStart parallel are in the [jitter-entropy Finding](#finding-the-aws-lc-jitter-entropy-cold-start-tax-same-cost-two-outcomes) below.
 - **SnapStart (Java):** plain JVM vs SnapStart, treated as two **separate runtimes**. The dashboard shows `Java` and `Java SnapStart` as distinct series alongside the other runtimes, not as a Java sub-variant, because SnapStart is a fundamentally different execution model, not a tuning knob: it restores a pre-initialized snapshot instead of running the JVM init on every cold start, replacing `Init Duration` with a `Restore Duration` (usually much smaller on a heavy handler, but not always on a light one). The SnapStart variant is **primed**: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, so the AWS SDK's lazy class loading / marshaller construction / JIT is baked into the snapshot. That is the realistic config an operator who enables SnapStart would ship (see the priming finding under Findings).
 
@@ -233,7 +233,7 @@ it wins on the SDK-heavy and heavy-init handlers (`oneclient`, `threeclient`, `b
 (`hello`, `authz`, `cache`), where fully-primed `authz` still trails plain Java.
 
 Full mechanism, the primed/not-primed split, and live magnitudes on
-**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart)**. The primed/not-primed split
+**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)**. The primed/not-primed split
 is specified by DESIGN.md Measurement-purity invariant #10 (keep the two in sync). One repo-only measurement not on the site:
 
 > **Dated one-off characterization (taken 2026-06, arm64/512 MB `threeclient`).** The unprimed variant is
@@ -259,7 +259,7 @@ reaches everything and SnapStart wins. This is a property of the smithy-java
 API surface used in this run (1.4.0), not of SnapStart; a future warmup hook would close it.
 Faking it by reaching into package-private internals is rejected as a methodology bug (DESIGN.md
 Measurement-purity invariant #10). Full write-up and magnitudes on
-**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart)**.
+**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)**.
 
 ### Finding: the AWS-LC jitter-entropy cold-start tax: same cost, two outcomes
 
@@ -270,7 +270,7 @@ identical between jitter=On and jitter=Off. Building with `AWS_LC_SYS_NO_JITTER_
 **latency/security trade-off, not a free win** (it removes one of AWS-LC's defense-in-depth entropy
 sources; the second source becomes the OS plus the CPU hardware RNG (`RDRAND`/`RNDR`) where present, but
 on a CPU without one, such as arm64 Graviton2, it falls back to the OS for both slots, so the two are no
-longer independent, see the [Rust page](https://lambdabench.dev/rust) for the full detail). AWS's own Rust SDK team documents this as
+longer independent, see the [Rust page](https://lambdabench.dev/rust.html) for the full detail). AWS's own Rust SDK team documents this as
 the Lambda cold-start mitigation, framed as a per-workload trade-off (see the
 [smithy-rs announcement](https://github.com/smithy-lang/smithy-rs/discussions/4541)).
 
@@ -281,8 +281,8 @@ runs on the tier's fractional allocation. `oneclient` does it in the Invoke phas
 in `init_ms`, paid cheaply today). AWS-LC also auto-opts-out inside a snapshot restore
 (`is_vm_ube_environment()`), so this never fires for SnapStart. The benchmark sets the flag matrix-wide
 and keeps a scoped jitter=On A/B on `oneclient`/`lettercount` × o3 to quantify it. Full mechanism, the
-Init-phase-boost caveat, and both chart panels on **[lambdabench.dev/rust](https://lambdabench.dev/rust)**;
-the lifecycle-phase story is on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle)**.
+Init-phase-boost caveat, and both chart panels on **[lambdabench.dev/rust](https://lambdabench.dev/rust.html)**;
+the lifecycle-phase story is on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)**.
 
 The build-side mechanics (where the flag is set, and why the two variants must not share a
 `CARGO_TARGET_DIR`) are in DESIGN.md Fairness invariant #4.
@@ -299,8 +299,8 @@ Go `panic` re-inits while a Rust `panic` stays warm). The sharper edge is on **S
 recovery after such a failure runs a **full from-scratch JVM init, not a snapshot restore**, so it
 abandons the fast path outright, on the runtime where init is most expensive. Full
 write-up, the per-runtime mapping, and the verification on
-**[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle)** (general) and
-**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart)** (the SnapStart recovery
+**[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)** (general) and
+**[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)** (the SnapStart recovery
 path). This is off-matrix behavioral characterization (the live matrix forces clean cold starts and
 does not crash functions), so it is stated as mechanism, not committed magnitudes.
 
@@ -315,8 +315,8 @@ everywhere is their sum**. The clearest case is Go vs Rust on `oneclient`: Go's 
 AWS SDK for Go v2 builds its client lazily while `aws-config` does it eagerly, so read by total cold start
 the ordering flips and Rust comes out ahead. This is the mirror image of SnapStart priming (which
 *hoists* first-request cost into snapshot time); in both cases the total is the only fair metric. Full
-breakdown on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle)** and the "Cold start
-breakdown" chart on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison)**.
+breakdown on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)** and the "Cold start
+breakdown" chart on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
 ### Finding: zip hides its size cost, a container image reports it
 
@@ -336,7 +336,7 @@ large-artifact effect, not a universal win. Memory tier moves neither phase's si
 padding is a deliberate worst case for the image (unique, all-touched bytes that defeat
 deduplication and lazy loading), so a real image's transfer term should be smaller; like all probe
 output these are illustrative off-matrix magnitudes, not matrix data. Full charts, mechanism, and
-the paper's cache numbers on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle)**.
+the paper's cache numbers on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)**.
 
 ### Finding: Go's slower `batch` warm time is `encoding/json`, not GC
 
@@ -359,7 +359,7 @@ the map), so the allocator/GC is not the culprit. So `batch`'s median is a seria
 `encoding/json` because it is Go's idiomatic parser; swapping in `goccy/go-json` or `sonic` would compare
 libraries, not languages (the SHA trap; see the [Fairness note](#fairness-note)). `batch` *does* surface
 a modest GC tail (read it in absolute P99.9 − median, not the ratio); the full tail discussion and charts
-are on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison)**.
+are on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
 ### Finding: the GC P99 tax is real, but it needs a *retained* heap, which is why `cache` exists
 
@@ -373,7 +373,7 @@ the P50 at the fractional-vCPU tiers and eases as vCPU grows; there is also a me
 representations sit higher). Note this is a *single-request* GC tax: Lambda runs one request per sandbox,
 so the concurrency-amplified stop-the-world of the high-RPS articles is structurally out of reach here.
 The tail-vs-median charts and the read-in-absolute-ms rule are on
-**[lambdabench.dev/comparison](https://lambdabench.dev/comparison)**.
+**[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
 ## How it works
 
@@ -450,7 +450,7 @@ re-rendered later **without re-running the benchmark**. Inspect a run with `zcat
 The parsed `Billed Duration` and `Memory Size` are also what the site's **cost view** is priced from
 (mean $ per million warm invokes: GB-seconds plus the per-request fee, at a fixed eu-central-1
 on-demand reference rate, per architecture), on
-**[lambdabench.dev/comparison](https://lambdabench.dev/comparison)**.
+**[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
 ## Region / account
 
