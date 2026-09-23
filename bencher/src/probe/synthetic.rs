@@ -226,13 +226,13 @@ pub(super) fn write_incompressible<W: std::io::Write>(
     let mut chunk = vec![0u8; 1024 * 1024];
     let mut written = 0usize;
     while written < len {
-        for word in chunk.chunks_exact_mut(8) {
+        for word in chunk.as_chunks_mut::<8>().0 {
             state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
             let mut z = state;
             z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
             z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
             z ^= z >> 31;
-            word.copy_from_slice(&z.to_le_bytes());
+            *word = z.to_le_bytes();
         }
         let n = (len - written).min(chunk.len());
         sink.write_all(&chunk[..n])?;
