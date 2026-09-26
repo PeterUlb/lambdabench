@@ -54,6 +54,13 @@ iterate without repeating work, scope `run` and skip the phases that have not ch
 `run --skip-build` reuses the artifacts already in `dist/`, and `run --skip-deploy` invokes the
 functions already deployed (both fail loud if what they expect is missing).
 
+**Publish (optional).** The numbers on lambdabench.dev come from an in-region run on ECS Fargate, not a
+local `bencher run`. `deploy/` holds the CDK app that provisions the site hosting and the runner task.
+After the one-time setup (and a `cdk deploy` whenever the source changes), `deploy/run.sh` launches a
+task that runs the matrix, archives the raw results, runs both probes, builds the site from the fresh
+data, and publishes it. Setup, the deploy-time context flags, and the run procedure are in
+[deploy/README.md](deploy/README.md).
+
 [Usage](#usage) below has the flags and scoped-run recipes. Two companion docs go deeper:
 [DESIGN.md](DESIGN.md) has the design rules and invariants (read before adding or editing a scenario), and
 [RUNBOOK.md](RUNBOOK.md) covers running a full sweep at scale (pool sizing, the control-plane quota, and
