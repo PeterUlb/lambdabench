@@ -55,6 +55,13 @@ export class SiteStack extends cdk.Stack {
       enforceSSL: true,
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        {
+          noncurrentVersionExpiration: cdk.Duration.days(30),
+          noncurrentVersionsToRetain: 3,
+          expiredObjectDeleteMarker: true,
+        },
+      ],
     });
 
     // Private archive for raw benchmark output (run-*.jsonl.gz + run-*.meta.json)
