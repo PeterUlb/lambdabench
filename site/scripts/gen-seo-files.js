@@ -23,7 +23,7 @@ const ROOT_ICONS = ["favicon.svg", "apple-touch-icon.png"];
 
 // Map a configured page path to its absolute canonical URL. servedPath applies
 // the ".html" suffix that `preserveExtension` uses for the actual objects, so
-// the sitemap URLs resolve without a clean-URL edge rewrite.
+// the sitemap URLs hit real objects, not the edge redirect.
 function canonical(path) {
   return `${SITE_URL}${servedPath(path)}`;
 }

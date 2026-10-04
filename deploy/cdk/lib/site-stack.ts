@@ -7,6 +7,7 @@ import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
+import { HTML_REDIRECT_FUNCTION_CODE } from "./html-redirect-function";
 
 export interface SiteStackProps extends cdk.StackProps {
   /** Apex domain the site is served on, e.g. "bench.example.com". */
@@ -77,10 +78,19 @@ export class SiteStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // No clean-URL edge rewrite is needed: the site is built with Observable's
-    // `preserveExtension: true` (see site/observablehq.config.js), so every
-    // internal link, canonical tag, and sitemap entry already points at a real
-    // ".html" object. The root "/" is served via defaultRootObject.
+    // Redirects extensionless external links to their ".html" page (why: see
+    // html-redirect-function.ts). Covered by the flat-rate plan (Lambda@Edge is
+    // not), provided the function stays dedicated to this distribution.
+    const htmlRedirect = new cloudfront.Function(
+      this,
+      "HtmlExtensionRedirect",
+      {
+        comment: "301 extensionless page paths to their .html object",
+        runtime: cloudfront.FunctionRuntime.JS_2_0,
+        code: cloudfront.FunctionCode.fromInline(HTML_REDIRECT_FUNCTION_CODE),
+      },
+    );
+
     this.distribution = new cloudfront.Distribution(this, "SiteDistribution", {
       comment: "LambdaBench site",
       defaultRootObject: "index.html",
@@ -99,6 +109,12 @@ export class SiteStack extends cdk.Stack {
         // Compress at the edge so the ~9 MB stats.json ships at its ~640 KB gzip size.
         compress: true,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        functionAssociations: [
+          {
+            function: htmlRedirect,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
       domainNames: [props.siteDomain],
       certificate: props.certificate,

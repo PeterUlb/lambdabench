@@ -65,7 +65,9 @@ function normalizePagePath(path) {
 // Map a configured page path to the path actually served. With
 // `preserveExtension: true` (see default export), Framework formats every
 // internal link as "/foo.html", which maps 1:1 to the built S3 object, so the
-// static host needs no clean-URL edge rewrite. The root stays "/" (served via
+// ".html" URL is canonical (the edge 301s extensionless links to it; see
+// deploy/cdk/lib/html-redirect-function.ts).
+// The root stays "/" (served via
 // CloudFront's defaultRootObject = index.html). Canonical/OG/sitemap URLs are
 // built by hand here and in gen-seo-files.js, bypassing Framework's link
 // formatter, so they must apply the same ".html" suffix to stay crawlable.
@@ -164,8 +166,8 @@ export default {
   // All SEO/social meta plus the stylesheet link are emitted per page here.
   head,
   // Format internal links as "/foo.html" so each maps directly to its built S3
-  // object. This lets a private-S3 + CloudFront (OAC) host serve the site with
-  // no clean-URL rewrite function at the edge. The home link stays "/".
+  // object, so a private-S3 + CloudFront (OAC) host needs no edge rewrite (only
+  // a redirect for external extensionless links). The home link stays "/".
   preserveExtension: true,
   // The benchmark is a fixed dataset, so a static toc + the default sidebar is
   // enough. Pages are listed explicitly for ordering.

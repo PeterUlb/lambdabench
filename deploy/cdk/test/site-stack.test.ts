@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { EdgeStack } from "../lib/edge-stack";
 import { SiteStack } from "../lib/site-stack";
+import { HTML_REDIRECT_FUNCTION_CODE } from "../lib/html-redirect-function";
 
 // Locks the security posture of the hosting layer. Both buckets (the CloudFront
 // origin and the raw-results archive) are private, encrypted, versioned, and
@@ -111,5 +112,56 @@ describe("SiteStack", () => {
     // OAC is the private-origin mechanism; its presence (with an S3 origin that
     // has no public bucket policy) is what keeps the origin non-public.
     template.resourceCountIs("AWS::CloudFront::OriginAccessControl", 1);
+  });
+
+  test("the extensionless-path redirect function runs on viewer-request", () => {
+    template.resourceCountIs("AWS::CloudFront::Function", 1);
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          FunctionAssociations: [
+            Match.objectLike({ EventType: "viewer-request" }),
+          ],
+        }),
+      }),
+    });
+  });
+});
+
+// Runs the function source itself: as a string, nothing else checks it before the edge.
+describe("HTML_REDIRECT_FUNCTION_CODE", () => {
+  type Result = {
+    uri?: string;
+    statusCode?: number;
+    headers?: { location: { value: string } };
+  };
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const handler = new Function(
+    `${HTML_REDIRECT_FUNCTION_CODE}; return handler;`,
+  )() as (event: { request: { uri: string } }) => Result;
+  const run = (uri: string) => handler({ request: { uri } });
+
+  test.each([
+    ["/comparison", "/comparison.html"],
+    ["/comparison/", "/comparison.html"],
+    ["/lifecycle//", "/lifecycle.html"],
+    ["/index", "/index.html"],
+  ])("redirects %s to %s", (uri, location) => {
+    const res = run(uri);
+    expect(res.statusCode).toBe(301);
+    expect(res.headers?.location.value).toBe(location);
+  });
+
+  test.each([
+    "/",
+    "/comparison.html",
+    "/_file/styles.809ce928.css",
+    "/_npm/d3-array@3.2.4/b8e751b6.js",
+    "/sitemap.xml",
+    "//",
+  ])("passes %s through unchanged", (uri) => {
+    const res = run(uri);
+    expect(res.statusCode).toBeUndefined();
+    expect(res.uri).toBe(uri);
   });
 });

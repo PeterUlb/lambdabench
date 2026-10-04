@@ -66,9 +66,12 @@ there; SiteStack references both cross-region.
   custom resource once a service model ships.
 - **ECS Fargate, not CodeBuild**, for the run: CodeBuild's maximum build timeout is exactly 8h and
   the run might exceed that ceiling; a Fargate task has no such limit.
-- **No clean-URL edge function.** The site is built with Observable's `preserveExtension: true`
-  (`site/observablehq.config.js`), so every link, canonical tag, and sitemap entry already points
-  at a real `.html` object. CloudFront's `defaultRootObject` serves `/`. No rewrite needed.
+- **`.html` URLs, plus a redirect for links that drop the extension.** With Observable's
+  `preserveExtension: true` (`site/observablehq.config.js`), every link, canonical tag, and sitemap
+  entry points at a real `.html` object; `defaultRootObject` serves `/`. External links like
+  `/comparison` would 403 on the private origin, so a CloudFront Function
+  (`cdk/lib/html-redirect-function.ts`) 301s them to the `.html` URL (a redirect, not a rewrite,
+  keeps one URL per page). The flat-rate plan covers CloudFront Functions, not Lambda@Edge.
 - **Default VPC, public subnet, no NAT.** The Fargate task runs with a public IP in the account's
   default VPC and reaches AWS APIs + package registries directly. $0 standing network cost.
 
