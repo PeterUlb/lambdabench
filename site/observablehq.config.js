@@ -105,6 +105,7 @@ function datasetJsonLd() {
     ],
     creator: { "@type": "Organization", name: DOMAIN },
     isAccessibleForFree: true,
+    license: "https://creativecommons.org/licenses/by/4.0/",
     measurementTechnique:
       "Repeated cold and warm Lambda invocations across memory tiers and CPU architectures (arm64 and x86_64)",
   };
