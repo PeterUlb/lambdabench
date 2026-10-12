@@ -212,6 +212,12 @@ the archive bucket (a separate private S3 bucket, not fronted by CloudFront, so 
 reachable). Only the built site in `out-site/` is synced to the public origin bucket. Inspect or
 download archives with the AWS CLI against `ArchiveBucketName` from the stack outputs.
 
+The site sync never deletes content-hashed assets at publish time, so a visitor still holding the
+previous HTML (an open tab, or a cached page) can keep loading its scripts and styles. Each publish
+writes its asset list to `_deploys/<timestamp>.txt` in the site bucket, and
+`deploy/site-assets.py` deletes only assets that none of the newest `KEEP_BUILDS` (default 5)
+manifests lists. Pruning starts once that many manifests exist.
+
 To refresh the data, run `deploy/run.sh` again. The site build's data loaders always pick the newest
 `results/run-*` (matrix) and `results/lifecycle-*` (probe) files.
 

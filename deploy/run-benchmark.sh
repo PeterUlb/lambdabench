@@ -20,6 +20,8 @@
 #                         throws without it)
 # Optional:
 #   KEEP_RESOURCES      - if "1", skip teardown (leave the function matrix deployed)
+#   KEEP_BUILDS         - how many published builds' assets stay in the site
+#                         bucket (default 5; see deploy/site-assets.py)
 #   LAMBDABENCH_CONTACT_EMAIL - contact email; if set, the built site shows a
 #                         "Contact" mailto footer link (inherited by npm run build)
 set -euo pipefail
@@ -195,22 +197,33 @@ fi
 # the icons are served under stable URLs, so an immutable header would pin a stale
 # icon in browser caches for a year (CloudFront invalidation never reaches those).
 #
-# Each pass owns --delete over its own key space, and the two spaces are disjoint
-# (pass 1 excludes the un-hashed set, pass 2 includes only it), so together they
-# prune every stale object. A filter-excluded object is never eligible for
-# --delete, so pass 1 leaves stale HTML behind and pass 2 must delete it: without
-# --delete on pass 2 a renamed or removed page lingers in the bucket and keeps
-# being served. The disjoint scopes are also why pass 2's --delete cannot touch
-# the assets pass 1 just uploaded: they are excluded from pass 2 entirely.
-aws s3 sync site/out-site/ "s3://$SITE_BUCKET/" --delete --region "$REGION" \
+# The two key spaces are disjoint (pass 1 excludes the un-hashed set, pass 2
+# includes only it). Pass 1 has no --delete: a visitor still holding the previous
+# HTML (an open tab, or HTML cached for up to max-age=300) requests the previous
+# build's hashes, which would 403 if deleted now. site-assets.py below
+# removes assets only once no recent build references them. Pass 2 does need
+# --delete: a filter-excluded object is never eligible for --delete, so pass 1
+# could never remove stale HTML, and a renamed or removed page would linger in
+# the bucket and keep being served. Pass 2's --delete cannot touch the assets
+# pass 1 just uploaded, since they are excluded from pass 2 entirely.
+aws s3 sync site/out-site/ "s3://$SITE_BUCKET/" --region "$REGION" \
   --exclude "*.html" --exclude "robots.txt" --exclude "sitemap.xml" \
   --exclude "favicon.svg" --exclude "apple-touch-icon.png" \
   --cache-control "public, max-age=31536000, immutable"
+# Record this build's assets under _deploys/ before pass 2 makes its HTML live,
+# so a publish that fails after this point still leaves the live build recorded
+# and the prune step of a later publish keeps its assets.
+python3 deploy/site-assets.py record --bucket "$SITE_BUCKET" --region "$REGION" \
+  --out-dir site/out-site
 aws s3 sync site/out-site/ "s3://$SITE_BUCKET/" --delete --region "$REGION" \
   --exclude "*" --include "*.html" --include "robots.txt" --include "sitemap.xml" \
   --include "favicon.svg" --include "apple-touch-icon.png" \
   --cache-control "public, max-age=300"
 
 aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' --region "$REGION"
+
+# Delete assets that none of the newest KEEP_BUILDS manifests lists.
+python3 deploy/site-assets.py prune --bucket "$SITE_BUCKET" --region "$REGION" \
+  --out-dir site/out-site --keep "${KEEP_BUILDS:-5}"
 
 echo "== done: site published to s3://$SITE_BUCKET and invalidated on $DISTRIBUTION_ID =="
