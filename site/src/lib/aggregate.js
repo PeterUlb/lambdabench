@@ -66,7 +66,7 @@ export function assertRunComplete(meta) {
 // complete (footer written, trailing rows lost to a partial copy of the results
 // dir or a page-cache flush that never landed). meta.status would still read "ok"
 // while the file holds a subset, publishing percentiles over a partial matrix.
-// Closing that window needs `total_invocations_recorded`, the field record.rs
+// Detecting this needs `total_invocations_recorded`, the field record.rs
 // persists for exactly this purpose. Skipped for older metas that predate the
 // field (`total_invocations_recorded == null`), consistent with
 // assertRunComplete's older-meta handling. `inputPath` labels the file in the error.
@@ -225,8 +225,8 @@ export function aggregate(rows, meta = {}, { inputBasename = null } = {}) {
   let warmWithoutDuration = 0;
   // A footprint/cost input that is present (`!= null`) but non-finite passes the
   // `!= null` guard yet cleanSort drops it, so `footprint.n`/`cost.n` diverge
-  // from `warm.n` with no trace. (A genuinely `null` field is legitimately
-  // absent and stays out.)
+  // from `warm.n` with no trace. (A `null` field is an allowed absence and is
+  // skipped.)
   let footNonFinite = 0;
   let costNonFinite = 0;
   for (const d of rows) {
@@ -380,7 +380,7 @@ export function aggregate(rows, meta = {}, { inputBasename = null } = {}) {
   // Per (arch, scenario, memory, jitter): cold-init P50, cold-firstReq P50, and
   // cold-total P50. All three because which segment the tax lands in varies by
   // scenario. Empirically Lambda's Init and Invoke phases behave as if on
-  // different CPU envelopes (Init-phase boost from re:Invent 2019, undocumented
+  // different CPU allocations (Init-phase boost from re:Invent 2019, undocumented
   // elsewhere; see the README Finding for the disclaimer):
   //   - oneclient builds the SDK in the Init phase but the first TLS handshake
   //     is in the Invoke phase, so the tax lands in firstReq, a cliff that grows

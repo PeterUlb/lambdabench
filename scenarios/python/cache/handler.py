@@ -11,15 +11,15 @@
 #      (eviction + insert). The replaced buffers become garbage while the live set
 #      stays full, generating garbage against a large permanently-live heap.
 #   2. Scan: read every 10th entry and sum a byte. This keeps the whole retained
-#      set genuinely live and read, so it cannot be elided.
+#      set live and read, so it cannot be elided.
 #
-# Why this workload (contrast `batch`): a tracing collector's cost scales with the
-# size of the live heap it must trace, not with the garbage. Keeping a large live
+# Why this workload (contrast `batch`): a tracing GC's per-cycle cost scales with
+# the size of the live heap it must trace, not with the garbage. Keeping a large live
 # set permanently resident while generating garbage against it makes reclaim
 # expensive every invoke, the path `batch` never reaches (its object graph is
 # transient). At the smaller fractional-vCPU tiers CPython's refcounting + cyclic
 # GC, plus its large per-object overhead, competes with the handler for the one
-# core, so the warm P99/P99.9 tail opens up, worst at the starved low-memory tiers
+# core, so the warm P99/P99.9 tail widens, worst at the starved low-memory tiers
 # and easing as vCPU grows. A non-GC runtime frees each replaced buffer immediately,
 # so its tail stays flat. Read the absolute tail latencies on the dashboard, not a
 # P99/P50 ratio.
@@ -47,7 +47,7 @@ _rot = 0
 def _churn_and_scan():
     # Replace CHURN entries then scan every 10th entry. The replaced buffers become
     # garbage while the live set stays full, so the collector keeps managing the
-    # whole ~100 MB set. The scan keeps it genuinely live.
+    # whole ~100 MB set. The scan keeps it live.
     global _rot
     for c in range(CHURN):
         _rot = (_rot + 1) % ENTRIES

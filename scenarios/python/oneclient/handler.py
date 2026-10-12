@@ -13,7 +13,7 @@ KEY = os.environ["LAMBDABENCH_KEY"]
 
 # Init phase: build the client once. total_max_attempts=1 disables SDK retries
 # (1 = the initial attempt, no retries) so a throttle/transient surfaces as a hard
-# failure, not a silently-retried inflated Duration. A failed run beats wrong data.
+# failure, not a silently-retried inflated Duration.
 _client = boto3.client("dynamodb", config=Config(retries={"total_max_attempts": 1}))
 
 

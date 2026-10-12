@@ -17,10 +17,10 @@ const input = newestResultsFile({
 
 const raw = readFileSync(input, "utf8");
 
-// The "What a caller actually waits through" section renders the caller-wait
+// The "What a caller waits for end to end" section renders the caller-wait
 // fields (w_warm_p50 + the W_cold/W_warm min-max spreads); an output lacking
-// them comes from an outdated probe binary. Stale data gets the same posture
-// as missing data (see lib/results-input.js): refuse to build rather than
+// them comes from an outdated probe binary. Stale data is handled like missing
+// data (see lib/results-input.js): refuse to build rather than
 // publish a placeholder. check-lifecycle-prose.py flags the same condition
 // with the same re-run pointer.
 const waitFields = [

@@ -43,7 +43,7 @@ there; SiteStack references both cross-region.
 - **CloudFront flat-rate Free plan** ($0/mo) covers one distribution + one apex domain, Route 53
   DNS, WAF, DDoS protection, serverless edge compute, and a 5 GB S3 storage credit. The built site
   is a few MB (~3 MB, of which `stats.json` is the bulk) and serves well under the 100 GB transfer /
-  1M request monthly allowance, so the Free tier is comfortable. (AWS _Free Tier_ promotional accounts cannot subscribe to flat-rate
+  1M request monthly allowance, so the Free plan is comfortable. (AWS _Free Tier_ promotional accounts cannot subscribe to flat-rate
   plans; a standard paid account is required.)
 - **TLS cert and WAF Web ACL are CDK-managed.** The plan also offers a plan-issued TLS cert and an
   auto-created WAF, but those resources sit outside CloudFormation: the next `cdk deploy` reconciles

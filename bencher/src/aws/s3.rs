@@ -119,7 +119,7 @@ impl Aws {
 
         // Seed the large lettercount payload (~1 MB ASCII JSON). Deploy runs on
         // every `run`, so the payload is generated and uploaded only when the
-        // stored object is missing or stale
+        // stored object is missing or stale.
         self.ensure_seed_object(
             &bucket,
             S3_LETTERCOUNT_KEY,
@@ -130,7 +130,7 @@ impl Aws {
 
         // Seed the large batch payload (~16 MB JSON array of records). Read
         // once at init by the batch handlers, grouped-by key per invoke. Same
-        // version-gated lazy seed as lettercount
+        // version-gated lazy seed as lettercount.
         self.ensure_seed_object(
             &bucket,
             S3_BATCH_KEY,
@@ -290,12 +290,10 @@ fn generate_lettercount_payload(min_bytes: usize) -> String {
         let w2 = WORDS[(i / (WORDS.len() * WORDS.len())) % WORDS.len()];
         let entry =
             format!(r#""{w0} {w1} {w2} the quick brown fox jumps over the lazy dog record{i}""#);
-        // Cross-language fairness depends on ASCII-only content: the handlers
-        // count over bytes (Rust), UTF-16 code units (Node), and code points
-        // (Python), which agree ONLY for ASCII. A non-ASCII character would make
-        // the three report different totals with no error, silently invalidating
-        // the comparison. Assert here (runs once per entry at seed time) so a
-        // future WORDS edit that sneaks in a non-ASCII byte fails the deploy.
+        // ASCII-only content keeps the cross-language counts equal (see the doc
+        // comment above); a non-ASCII character would make the three report
+        // different totals with no error. Assert here (runs once per entry at seed
+        // time) so a future WORDS edit that adds a non-ASCII byte fails the deploy.
         assert!(
             entry.is_ascii(),
             "lettercount payload entry {i} is not ASCII ({entry:?}); the cross-language \
@@ -310,7 +308,7 @@ fn generate_lettercount_payload(min_bytes: usize) -> String {
 /// at least `min_bytes`. Keys cycle over `cardinality` distinct values, so the
 /// handlers' group-by produces a map of that many entries. Deterministic, so
 /// every deploy seeds the same batch. Records are objects (not strings) so parsing
-/// builds a real object graph per record, the GC fuel.
+/// builds a real object graph per record for the GC to work through.
 fn generate_batch_payload(min_bytes: usize, cardinality: usize) -> String {
     build_json_array(min_bytes, |i| {
         // key cycles 0..cardinality; value is a small varying integer. No

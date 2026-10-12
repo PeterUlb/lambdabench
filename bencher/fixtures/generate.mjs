@@ -1,10 +1,11 @@
 // Generates the `authz` scenario crypto fixtures, idempotently.
 //
-// Run by build.rs (bencher + the authz crate) before compilation, so the
-// `include_str!`/JSON-import of the public JWK and the token resolve. Also
+// Run before compilation by build.rs (bencher + the Rust authz crate), by the
+// Node build (scenarios/node/build.mjs), and by the Java authz Gradle build, so
+// the `include_str!`/JSON-import of the public JWK and the token resolve. Also
 // runnable by hand: `node bencher/fixtures/generate.mjs [--force]`.
 //
-// WHY a generator instead of committing the files: the fixtures include an RSA
+// Why generate instead of committing the files: the fixtures include an RSA
 // PRIVATE KEY (PEM) and a signed JWT, which trip secret-scanning push protection
 // even though they are a throwaway benchmark key that guards nothing. Generating
 // them at build time keeps them out of git entirely (they are gitignored).

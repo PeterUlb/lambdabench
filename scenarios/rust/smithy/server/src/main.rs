@@ -3,7 +3,7 @@
 //!
 //! `GetMenu` increments a shared in-memory counter (exercising the framework's
 //! `AddExtensionLayer` + `Extension<>` shared-state path, as a real Smithy
-//! server would) and returns a constant menu. No AWS client construction or
+//! server would) and returns a one-item menu. No AWS client construction or
 //! network I/O, so the cold-start delta versus `hello` isolates the pure Smithy
 //! server framework overhead.
 //!
@@ -28,7 +28,8 @@ struct State {
     requests: AtomicU64,
 }
 
-/// `GetMenu` bumps the shared counter and returns a constant menu item.
+/// `GetMenu` bumps the shared counter and returns one menu item whose
+/// description carries the count.
 async fn get_menu(
     _input: input::GetMenuInput,
     state: Extension<Arc<State>>,

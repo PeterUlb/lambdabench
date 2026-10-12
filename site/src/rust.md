@@ -19,9 +19,9 @@ const cm = colorModel(
 ```
 
 ```js
-// One filter, shared by both sections below. Rust-only page, so the language
-// toggle would be meaningless, so the architectures + memories pickers drive both
-// the jitter chart and the opt-level dumbbells. The scenarios picker drives
+// One filter, shared by both sections below. Rust-only page, so there is no
+// language toggle. The architectures + memories pickers drive both the jitter
+// chart and the opt-level dumbbells. The scenarios picker drives
 // the opt-level section directly; the jitter chart only ever shows
 // `oneclient`/`lettercount` (the two scenarios with the A/B), so unchecking
 // either of those in the picker hides that panel and unchecking both hides
@@ -102,13 +102,13 @@ display(showJitter ? C.jitterCliff(v) : null);
 <details class="chart-details">
 <summary><strong>Why setting <code>AWS_LC_SYS_NO_JITTER_ENTROPY=1</code> is a trade-off, not a default</strong></summary>
 
-AWS-LC seeds its RNG by hedging across two entropy sources as a defense-in-depth measure, with CPU jitter as the default seed root (see `entropy_sources.c` in [aws-lc](https://github.com/aws/aws-lc/blob/44766fa7daa88e5afc7fc6de3311c48eeeb02f39/crypto/fipsmodule/rand/entropy/entropy_sources.c), the C library that the `aws-lc-sys` crate vendors). With `AWS_LC_SYS_NO_JITTER_ENTROPY=1` set, AWS-LC seeds from the OS instead and uses the CPU's hardware RNG (`RDRAND` / `RNDR`) as the second source; on a CPU without a hardware RNG it falls back to the OS source for the second slot too, so the two sources are no longer independent. AWS-LC's own build option warns that with jitter disabled "randomness generation might not use two independent entropy sources," so it should be evaluated per workload. AWS's own Rust SDK team documents this flag as the cold-start mitigation for Lambda and frames it as a trade-off, not a blanket recommendation to disable ([smithy-rs announcement](https://github.com/smithy-lang/smithy-rs/discussions/4541)). Every other Rust chart on this site is built with the flag set, so its latency numbers reflect the optimized configuration; this page isolates what setting the flag actually changes on Lambda.
+AWS-LC seeds its RNG by hedging across two entropy sources as a defense-in-depth measure, with CPU jitter as the default seed root (see `entropy_sources.c` in [aws-lc](https://github.com/aws/aws-lc/blob/44766fa7daa88e5afc7fc6de3311c48eeeb02f39/crypto/fipsmodule/rand/entropy/entropy_sources.c), the C library that the `aws-lc-sys` crate vendors). With `AWS_LC_SYS_NO_JITTER_ENTROPY=1` set, AWS-LC seeds from the OS instead and uses the CPU's hardware RNG (`RDRAND` / `RNDR`) as the second source; on a CPU without a hardware RNG it falls back to the OS source for the second slot too, so the two sources are no longer independent. AWS-LC's own build option warns that with jitter disabled "randomness generation might not use two independent entropy sources," so it should be evaluated per workload. AWS's own Rust SDK team documents this flag as the cold-start mitigation for Lambda and frames it as a trade-off, not a blanket recommendation to disable ([smithy-rs announcement](https://github.com/smithy-lang/smithy-rs/discussions/4541)). Every other Rust chart on this site is built with the flag set, so its latency numbers reflect the optimized configuration; this page isolates what setting the flag changes on Lambda.
 
 **AWS-LC auto-opts-out inside a snapshot-restore environment.** A runtime check detects a VM uniqueness-breaking event (UBE), the resume of a snapshotted/cloned VM, and switches to the same OS + `RDRAND` configuration on its own ([entropy_sources.c](https://github.com/aws/aws-lc/blob/44766fa7daa88e5afc7fc6de3311c48eeeb02f39/crypto/fipsmodule/rand/entropy/entropy_sources.c)). Plain Lambda does not signal a VM UBE, so this does not fire for a plain Rust function; setting the build flag is the manual equivalent.
 
 **Two ways to avoid the Invoke-phase cliff** for a handler shaped like `oneclient`:
 
-- **Force a TLS handshake at init.** Constructing the SDK client is not enough, since `aws-lc-rs` is lazy; a small real call on the client the handler uses (for the DynamoDB-backed `oneclient`, a cheap call such as `list_tables`, though this variant is illustrative and not one of the measured builds) is required. This is cheap under the Init-phase CPU behavior noted above; if that behavior changes, the cost moves to the first request.
+- **Use the RNG once at init.** Constructing the SDK client is not enough, since `aws-lc-rs` seeds lazily on first use; one `aws_lc_rs::rand::fill` call at init moves the seeding there without a network call (a dated one-off measurement is on the [tuning page](./tuning#seed-the-aws-lc-rs-rng-at-init); this variant is not one of the matrix builds). This is cheap under the Init-phase CPU behavior noted above; if that behavior changes, the cost moves to the first request.
 - **Build with `AWS_LC_SYS_NO_JITTER_ENTROPY=1`.** Removes the cost outright (in either phase) but drops one of AWS-LC's defense-in-depth entropy sources, so it is a workload-specific decision.
 
 </details>

@@ -33,7 +33,7 @@ import software.amazon.smithy.java.server.RequestContext;
 import software.amazon.smithy.java.server.Service;
 
 /**
- * Scenario "smithyfull": the realistic shape, the Smithy server framework
+ * Scenario "smithyfull": the realistic case, the Smithy server framework
  * hosting a handler that does a real AWS write flow. The benchmark invokes
  * {@code CreateOrder}: the server SDK deserializes and validates the request
  * body, the handler KMS-encrypts a signature, DDB {@code PutItem}s the order,
@@ -45,13 +45,13 @@ import software.amazon.smithy.java.server.Service;
  * reuses them across warm invocations. Fixed write targets make the writes
  * idempotent (each invoke overwrites the same item/object). Retries are disabled
  * so a throttle or transient surfaces as a hard failure rather than being
- * silently retried into an inflated Duration: a failed run beats wrong data.
+ * silently retried into an inflated Duration.
  *
- * <p><b>SnapStart priming, and its one realistic limit.</b> The
+ * <p><b>SnapStart priming and its limit.</b> The
  * {@code beforeCheckpoint} hook calls {@code createOrder} directly, the pattern
  * AWS's own guidance uses to prime an SDK-heavy SnapStart handler. That warms the
  * dominant cold cost: the three SDK clients' lazy class loading, marshaller
- * construction, JIT, and TLS/credential warmup, all baked into the snapshot. It
+ * construction, JIT, and TLS/credential warmup, all captured in the snapshot. It
  * does not warm the Smithy framework's request path (protocol resolution, request
  * (de)serialization, constraint validation, response serialization), reachable
  * only through {@code LambdaEndpoint::handleRequest}, which smithy-java gives no
@@ -118,7 +118,7 @@ public final class CoffeeShopFullProvider implements SmithyServiceProvider, Reso
     public void beforeCheckpoint(org.crac.Context<? extends Resource> context) {
         // Prime the CreateOrder write flow so the three SDK clients' first-call
         // costs (lazy class loading, marshaller construction, JIT, TLS warmup) are
-        // baked into the snapshot: the dominant cold cost. This does not warm the
+        // captured in the snapshot: the dominant cold cost. This does not warm the
         // Smithy framework request path (see the class doc). createOrder ignores the
         // RequestContext, so a null context is fine; the write targets are the
         // idempotent fixed keys, so priming accumulates no data.

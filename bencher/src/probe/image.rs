@@ -11,9 +11,8 @@
 //! (see lifecycle.md "Zip vs container image").
 //!
 //! The only probe path that shells out to a container tool (`crane`) and pushes to
-//! ECR. crane is daemonless (base pull + one-layer append + CMD + push, no
-//! container-build daemon or VM), so unlike a `docker`/`finch` build it runs
-//! unattended in the publish pipeline.
+//! ECR. Unlike a `docker`/`finch` build, crane runs unattended in the publish
+//! pipeline (see `build_and_push_image`).
 
 use super::sample::{Sample, aggregate, sample_cold_series};
 use super::synthetic::{
@@ -30,8 +29,8 @@ use anyhow::{Context, Result, bail};
 const SYNTH_IMAGE_BASE: &str = "public.ecr.aws/lambda/python:3.14";
 
 /// Handler baked into the container-image family. Reads `padding.bin` fully at
-/// IMPORT time (the Init phase) iff `LAMBDABENCH_TOUCH=1`, folding the bytes so
-/// the read is not optimized away and every block is faulted in. The
+/// IMPORT time (the Init phase) iff `LAMBDABENCH_TOUCH=1`, counting the bytes
+/// read and printing the total, so every block is faulted in. The
 /// `image-untouched` variant leaves the env unset, so the padding blocks are
 /// never referenced and Lambda's lazy block-level loading may skip them entirely.
 const SYNTH_IMAGE_HANDLER: &[u8] = b"import os\n\
@@ -96,8 +95,8 @@ struct ImageOutput {
     /// The `python` zip family measured in the SAME run as the image samples
     /// above, so the zip-vs-image chart compares like with like (same session,
     /// vantage, date). NOT read from the separately-written
-    /// `lifecycle-download-scaling.json`: that file is a distinct probe invocation
-    /// and could drift in date/vantage. Python only (it matches the image's
+    /// `lifecycle-download-scaling-<run_id>.json`: that file is a distinct probe
+    /// invocation and could drift in date/vantage. Python only (it matches the image's
     /// managed Python base); the `rust` family is not carried here.
     zip_baseline: Vec<SyntheticSample>,
 }
@@ -105,11 +104,10 @@ struct ImageOutput {
 /// The container-image download-scaling run: per size, build+push ONE padded
 /// image, deploy two functions from it (`image-untouched` and `image-touched`),
 /// measure the same residual as the zip family, and tear down. Writes
-/// `--image-out`. Requires `crane` on PATH (fails loud if absent); this is the only
-/// probe path with that dependency. crane is daemonless, so this runs in the
+/// `--image-out`. Requires `crane` on PATH (fails loud if absent); crane runs in the
 /// publish pipeline (ECS Fargate) the same as the zip families.
 ///
-/// Cleanup discipline: created functions and pushed image tags are recorded in
+/// Cleanup: created functions and pushed image tags are recorded in
 /// ledgers as they are made (the tag the instant `crane mutate` succeeds), and
 /// `teardown_synthetic_images` runs on both success and error before the result
 /// propagates, so an error partway through still reclaims what was made. A hard
@@ -222,10 +220,9 @@ impl Drop for TempDirGuard {
 }
 
 /// Writes `padding.bin` of `size_mb` incompressible bytes into `dir` using the
-/// shared `write_incompressible` fill. Separate from `build_padded_zip` (which
-/// packs the padding into a zip); here the file becomes an image-layer entry,
-/// where incompressibility keeps gzip layer compression on push from shrinking it
-/// below the target and understating the download.
+/// shared `write_incompressible` fill (see there for why the bytes must not
+/// compress). Separate from `build_padded_zip`, which packs the padding into a
+/// zip; here the file becomes an image-layer entry.
 fn write_padding_file(dir: &std::path::Path, size_mb: u32) -> Result<()> {
     let target = size_mb as usize * 1024 * 1024;
     let mut f = std::io::BufWriter::new(
@@ -253,11 +250,10 @@ fn build_layer_tar(dir: &std::path::Path) -> Result<std::path::PathBuf> {
     builder
         .append_path_with_name(dir.join("padding.bin"), "var/task/padding.bin")
         .context("adding padding.bin to image layer")?;
-    // into_inner writes the tar trailer and returns the BufWriter; flush it
-    // explicitly so a failure writing the final buffered bytes (e.g. disk full on
-    // a 240 MB layer) surfaces here rather than being swallowed by BufWriter::drop,
-    // which would hand crane a truncated tar (same discipline as
-    // write_padding_file).
+    // into_inner writes the tar trailer and returns the BufWriter. Flush it
+    // explicitly, as write_padding_file does, so a failure writing the final
+    // buffered bytes (e.g. disk full on a 240 MB layer) surfaces here. Otherwise
+    // BufWriter::drop would swallow it and hand crane a truncated tar.
     let mut w = builder.into_inner().context("finishing image layer tar")?;
     std::io::Write::flush(&mut w).context("flushing image layer tar")?;
     Ok(tar_path)
@@ -269,8 +265,8 @@ fn build_layer_tar(dir: &std::path::Path) -> Result<std::path::PathBuf> {
 /// removed on every exit path, then shells `crane mutate` once to pull the managed
 /// base at the target platform, append the layer, set the handler CMD, and push the
 /// result to the ECR tag. Reads the pushed size back from ECR. Fails loud if crane
-/// is absent or exits non-zero (the only probe path with a crane dependency, and
-/// the sole reason the runner image carries crane).
+/// is absent or exits non-zero (this is the only reason the runner image carries
+/// crane).
 ///
 /// crane is daemonless (google/go-containerregistry): the whole "build" is a base
 /// pull + one-layer append + config edit + push, no container engine, VM, or
@@ -410,9 +406,9 @@ async fn sample_all_images(
             .with_context(|| format!("deploying {name}"))?;
             created_fns.push(name.clone());
 
-            // Buffer-then-commit per function: all N samples into a fresh Vec,
-            // returned only if every sample succeeds, so a transient failure
-            // re-runs this function's sampling (image + function stay in place).
+            // Buffer-then-commit per function (see `retry_transient`): a transient
+            // failure re-runs this function's sampling (image + function stay in
+            // place).
             let samples = sample_cold_series(
                 aws,
                 timed,
@@ -518,7 +514,7 @@ mod tests {
     }
 
     /// The image family labels this probe deploys, in create order (`[false,
-    /// true]` → untouched, touched), must equal the constant teardown enumerates,
+    /// true]` maps to untouched, touched), must equal the constant teardown enumerates,
     /// or teardown would miss them.
     #[test]
     fn image_families_match_config_in_create_order() {

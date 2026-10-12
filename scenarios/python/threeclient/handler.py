@@ -18,7 +18,7 @@ OBJECT_KEY = os.environ["LAMBDABENCH_OBJECT_KEY"]
 
 # Init phase: build all three clients once. total_max_attempts=1 disables SDK
 # retries so a throttle/transient surfaces as a hard failure, not a silently-
-# retried inflated Duration. A failed run beats wrong data.
+# retried inflated Duration.
 _no_retry = Config(retries={"total_max_attempts": 1})
 _ddb = boto3.client("dynamodb", config=_no_retry)
 _kms = boto3.client("kms", config=_no_retry)

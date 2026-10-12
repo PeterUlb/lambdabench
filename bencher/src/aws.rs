@@ -24,7 +24,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 /// Classifies an `SdkError` against a caller-supplied "is this not-found?"
-/// predicate, the shared discipline for the bencher's idempotent operations: a
+/// predicate, the shared pattern for the bencher's idempotent operations: a
 /// not-found result is success (resource already gone, or not yet created), while
 /// any other error is surfaced with `context` rather than collapsed into
 /// "missing". Returns `Ok(None)` for not-found and `Err(_)` otherwise, so a probe
@@ -54,7 +54,7 @@ where
 /// Issue-rate ceiling for calls against the scarce 15 req/s "remainder"
 /// control-plane quota, below it with headroom. Bounds the aggregate issue rate
 /// directly, regardless of concurrency or how fast individual calls happen to be.
-/// Polling in `wait_ready` is moved onto `GetFunction` (its own 100 req/s quota),
+/// Polling in `wait_ready` uses `GetFunction` (its own 100 req/s quota),
 /// so the calls this gates are `UpdateFunctionConfiguration` (per cold-force) plus
 /// `PublishVersion`/`DeleteFunction` on the SnapStart path.
 pub const CONTROL_PLANE_TPS: u32 = 12;
@@ -97,10 +97,10 @@ impl Aws {
     /// Loads credentials from the environment and constructs all clients,
     /// resolving the caller's account id up front (also validates creds work).
     pub async fn load() -> Result<Self> {
-        // The benchmark leans on Lambda's control plane: every cold-force does an
+        // The benchmark makes heavy use of Lambda's control plane: every cold-force does an
         // UpdateFunctionConfiguration (on the account-wide, unraisable 15 req/s
-        // "remainder" quota) plus several readiness polls (moved onto
-        // GetFunction's separate 100 req/s quota; see wait_ready). The scarce
+        // "remainder" quota) plus several readiness polls (on GetFunction's
+        // separate 100 req/s quota; see wait_ready). The scarce
         // control-plane calls are gated by a shared rate limiter
         // (CONTROL_PLANE_TPS) that caps the aggregate issue rate directly, so a
         // large invoke pool never bursts past it. Adaptive retry is the final

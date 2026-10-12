@@ -42,7 +42,7 @@ impl Report {
 /// separately by [`init_regex`] / [`restore_regex`], not as positional trailing
 /// groups, so a trailing field the platform appends (X-Ray `TraceId` /
 /// `SegmentId`, a future status field) cannot displace a cold marker and make a
-/// genuine cold start parse as warm.
+/// real cold start parse as warm.
 fn report_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {

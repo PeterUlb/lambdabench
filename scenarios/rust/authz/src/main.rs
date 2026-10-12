@@ -8,16 +8,16 @@
 //! extracts a configured set of claims with type-mapping the way a real
 //! authorizer does before handing them to a policy engine.
 //!
-//! The fairness split: RSA verification runs in a native crypto library
+//! Fairness: RSA verification runs in a native crypto library
 //! (`jsonwebtoken` -> AWS-LC here, WebCrypto/OpenSSL on Node), configured
 //! symmetrically across runtimes (see README "Fairness note"). But RS256 verify
 //! is a cheap public-key op, so native crypto is only a small slice; the
 //! surrounding in-language glue (base64url decode, JSON parse of header/payload,
-//! claim extraction/type-mapping) dominates and is what spreads the runtimes
-//! apart. The warm gap stays moderate and flat across memory tiers (the native
-//! verify is not CPU-starved at 128 MB the way pure-JS work is), placing `authz`
+//! claim extraction/type-mapping) dominates and is where the runtimes differ.
+//! The warm gap stays moderate and flat across memory tiers (the native verify is
+//! not CPU-starved at 128 MB the way pure in-language work is), so `authz` sits
 //! between lettercount (all in-language, wide spread) and a pure-crypto tie. Cold
-//! start spreads more strongly, by how lean each runtime is at startup.
+//! start differs more, depending on how much each runtime loads at startup.
 
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::{Value, json};
@@ -177,8 +177,7 @@ async fn main() -> Result<(), Error> {
     lambda_runtime::run(service_fn(move |event: LambdaEvent<Value>| {
         let state = state.clone();
         async move {
-            // The JWT arrives in the invoke payload as { "token": "<jwt>" },
-            // exactly as a real authorizer receives the token with the request.
+            // The JWT arrives in the invoke payload as { "token": "<jwt>" }.
             let token = event
                 .payload
                 .get("token")

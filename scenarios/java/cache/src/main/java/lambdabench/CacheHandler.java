@@ -19,14 +19,14 @@ import java.util.Map;
  * buffers (eviction + insert: the replaced buffers become garbage while the live
  * set stays full, generating garbage against a large permanently-live heap), then
  * (2) scans every 10th entry summing a byte, keeping the whole retained set
- * genuinely live and read so the JIT cannot elide it.
+ * live and read so the JIT cannot elide it.
  *
  * <p>Why this workload (contrast {@code batch}): the JVM's tracing GC pays a
  * per-cycle cost that scales with the live heap it must trace, not with the
  * garbage. Keeping a large live set permanently resident and churning it makes
  * every collection expensive, the path {@code batch} never reaches (its object
  * graph is transient). At the smaller fractional-vCPU tiers GC competes with the
- * handler for the one core, so the warm P99/P99.9 tail opens up while the median
+ * handler for the one core, so the warm P99/P99.9 tail widens while the median
  * stays flatter, worst at the starved low-memory tiers and easing as vCPU grows. A
  * non-GC runtime frees each replaced buffer immediately and stays flat. Read the
  * absolute tail latencies on the dashboard, not a P99/P50 ratio. Java's tail is
@@ -38,9 +38,9 @@ import java.util.Map;
  *
  * <p>Not primed via CRaC {@code beforeCheckpoint} (see DESIGN.md §10). cache has
  * no SDK to hoist, so a prime would warm only the hot loop's JIT, an advantage no
- * other runtime gets an analog of. Leaving the cold path unprimed makes the
- * SnapStart cold sample measure restore + first-touch JIT cost, the same shape a
- * non-SnapStart cold start pays.
+ * other runtime gets. Leaving the cold path unprimed makes the SnapStart cold
+ * sample measure restore + first-touch JIT cost, the same costs a non-SnapStart
+ * cold start pays.
  */
 public final class CacheHandler implements RequestHandler<Object, Map<String, Object>> {
 
@@ -66,7 +66,7 @@ public final class CacheHandler implements RequestHandler<Object, Map<String, Ob
 
     /** Replace CHURN entries then scan every 10th entry. The replaced buffers
      * become garbage while the live set stays full, so the GC keeps tracing the
-     * whole ~100 MB set. The scan keeps it genuinely live. */
+     * whole ~100 MB set. The scan keeps it live. */
     private static long churnAndScan() {
         for (int c = 0; c < CHURN; c++) {
             rot = (rot + 1) % ENTRIES;

@@ -146,8 +146,7 @@ const MAX_COLD_FORCE_ATTEMPTS: u32 = 6;
 /// retries stay fast for the common case (old sandbox retired within a second or
 /// two), later ones spread out to ride out the rare deep propagation lag (tens of
 /// seconds) rather than exhausting all attempts inside a too-narrow window, which
-/// would force a costly whole-cell re-run instead of letting the cell self-heal in
-/// place.
+/// would force a costly whole-cell re-run instead of recovering within the cell.
 const COLD_FORCE_RETRY_BACKOFF_BASE: std::time::Duration = std::time::Duration::from_millis(1500);
 /// Upper bound on a single cold-force backoff, so the escalation stays bounded.
 const COLD_FORCE_RETRY_BACKOFF_CAP: std::time::Duration = std::time::Duration::from_secs(12);
@@ -229,8 +228,7 @@ async fn run_cell(
                 // Hand the whole completed cell to the writer at once: it appends
                 // the rows and sync-flushes them as a unit, matching the cell-level
                 // atomicity of the buffering above (a crash keeps every finished
-                // cell). Per-row flushing would cost ~70% in size for no extra
-                // durability, since rows are never written individually.
+                // cell; see `ResultsWriter` for why the flush is per cell).
                 writer.write_cell(&rows)?;
                 return Ok(());
             }
@@ -356,7 +354,7 @@ async fn try_one_latest_cycle(
     let mut rows: Vec<InvocationRow> = Vec::with_capacity(1 + counts.warm as usize);
 
     // Force a cold sandbox and take the single cold invoke (idx 0). Retries the
-    // force if the invoke lands warm, so the cold row is always a genuine cold
+    // force if the invoke lands warm, so the cold row is always a real cold
     // start.
     let (nonce, cold_row) = force_cold_invoke(aws, cell, run_id, sizes, cycle)
         .await

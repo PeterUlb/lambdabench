@@ -22,16 +22,16 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 /**
  * Scenario "threeclient": construct THREE AWS SDK clients (DynamoDB, KMS, S3) at
  * init and call all three per invoke (GetItem + Encrypt + GetObject). Mirrors
- * the Rust and Node handlers; read by direct comparison against {@code oneclient}
+ * the other languages' handlers; read by direct comparison against {@code oneclient}
  * (not subtraction) to show what additional AWS clients add to cold start (extra
  * middleware stacks plus a first TLS handshake per distinct endpoint). Retries
  * disabled.
  *
  * <p>For SnapStart, the handler primes itself via a CRaC {@code beforeCheckpoint}
- * hook (one real invocation during init, baking the three SDK clients' first-call
- * costs into the snapshot, the realistic config for an operator who enables
- * SnapStart). The hook fires only when a snapshot is taken; a plain function uses
- * org.crac's no-op context, so the same jar is unprimed.
+ * hook (one real invocation during init, so the three SDK clients' first-call
+ * costs are captured in the snapshot, the realistic config for an operator who
+ * enables SnapStart). The hook fires only when a snapshot is taken; a plain
+ * function uses org.crac's no-op context, so the same jar is unprimed.
  */
 public final class ThreeClientHandler implements RequestHandler<Object, Map<String, Object>>, Resource {
 
@@ -54,8 +54,7 @@ public final class ThreeClientHandler implements RequestHandler<Object, Map<Stri
 
     static {
         // Retries disabled: a throttle/transient must surface as a hard failure,
-        // not be silently retried into an inflated Duration. A failed run beats
-        // wrong data.
+        // not be silently retried into an inflated Duration.
         ClientOverrideConfiguration noRetry = ClientOverrideConfiguration.builder()
                 .retryStrategy(AwsRetryStrategy.doNotRetry())
                 .build();

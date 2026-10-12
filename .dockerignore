@@ -1,7 +1,7 @@
 # Build context excludes for the benchmark-runner image (deploy/Dockerfile,
 # built with context = repo root). The container rebuilds every artifact from
 # source, so none of the generated output or caches below are needed - shipping
-# them would bloat the context (tens of GB) and bake stale output into the image.
+# them would grow the context by tens of GB and copy stale output into the image.
 # This mirrors .gitignore's source-vs-output split.
 
 # Rust build caches (root workspace + per-opt-level + the standalone smithy crates)

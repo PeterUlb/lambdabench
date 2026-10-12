@@ -10,9 +10,9 @@ license = "Apache-2.0"
 # embedded at build time. Each invoke verifies the token's RSA signature (via
 # `jsonwebtoken` -> AWS-LC, an assembly-optimized native path) and
 # extracts/type-maps its claims. RS256 verify is a cheap public-key op, so the
-# in-language glue (base64/JSON decode + claim mapping) still dominates: the
-# counterpart to `lettercount`, asking how much language choice matters when only
-# PART of the CPU is in a shared native lib (answer: a moderate amount).
+# in-language glue (base64/JSON decode + claim mapping) still dominates. It is the
+# counterpart to `lettercount` and measures how much language choice matters when
+# only PART of the CPU is in a shared native lib (a moderate amount).
 
 [[bin]]
 name = "bootstrap"

@@ -10,7 +10,7 @@ license = "Apache-2.0"
 # in-process cache / buffer pool. Each invoke replaces a fraction of it (garbage
 # against a permanently-live heap) and scans it. A tracing GC's per-cycle cost
 # scales with the LIVE heap it must trace, so at the fractional-vCPU tiers its
-# collector steals time from the handler and the warm P99 tail blows up; this
+# collector steals time from the handler and the warm P99 tail grows sharply; this
 # (non-GC) runtime frees each replaced buffer immediately and stays flat.
 # Contrast `batch`, whose object graph is transient (dropped at end of invoke).
 

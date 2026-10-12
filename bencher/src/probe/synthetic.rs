@@ -6,7 +6,7 @@
 //! and tears them down. This pushes the download term past the matrix's ~17 MB
 //! real-artifact ceiling to chart where download starts to dominate. Padding with
 //! inert bytes is NOT done in the matrix (it would measure download rather than
-//! loaded-code cold start; see README), but it is the correct instrument here: the
+//! loaded-code cold start; see README), but here that is what we want: the
 //! residual subtraction removes init and the first-request duration, leaving only
 //! steps 1-2 (download + environment start), the quantity artifact size is expected to
 //! move.
@@ -159,13 +159,9 @@ fn read_rust_bootstrap(repo_root: &std::path::Path, arch: Arch) -> Result<Vec<u8
 /// Builds a zip whose deployed size is ~`size_mb`: the runtime's base entry
 /// (`handler.py` for Python, the real `bootstrap` for Rust, `exec` set so Lambda
 /// can run it) plus one `padding.bin` entry written with `Stored` (no zip
-/// compression), so the zip size ≈ its uncompressed content. The padding is
-/// incompressible pseudo-random bytes (a dependency-free SplitMix64 fill, since
-/// there is no `rand` dep): a zero-filled blob would compress/dedupe below the zip
-/// at AWS's storage and transport layer, understating download cost and collapsing
-/// the residual. Incompressible bytes make the deployed size the true download
-/// size. The blob is sized to hit the target after the base entry and zip
-/// overhead.
+/// compression), so the zip size ≈ its uncompressed content. The padding comes
+/// from `write_incompressible` (see there for why it must not compress). The blob
+/// is sized to hit the target after the base entry and zip overhead.
 fn build_padded_zip(rt: SynthRuntime, base: &[u8], size_mb: u32) -> Result<Vec<u8>> {
     use std::io::Write;
     use zip::write::FileOptions;
@@ -212,11 +208,12 @@ fn build_padded_zip(rt: SynthRuntime, base: &[u8], size_mb: u32) -> Result<Vec<u
 /// so a second full-size buffer is never held. Dependency-free SplitMix64 with a
 /// fixed seed (there is no `rand` dep), so builds are deterministic.
 ///
-/// A zero-filled or repetitive blob would compress/dedupe below the zip
-/// (`Stored`) or in a container image's gzip layer on push, so the transferred
-/// size would fall far below the target and understate the download term.
-/// SplitMix64 output does not compress, so the on-the-wire size is the true
-/// download size. Shared by the zip padding (`build_padded_zip`) and
+/// A zero-filled or repetitive blob could be compressed or deduplicated below
+/// its stored size, by AWS's storage and transport layer for a `Stored` zip or by
+/// a container image's gzip layer on push. The transferred size would then fall
+/// far below the target, understating the download term and collapsing the
+/// residual. SplitMix64 output does not compress, so the on-the-wire size is the
+/// true download size. Shared by the zip padding (`build_padded_zip`) and
 /// the container-image padding (`write_padding_file`).
 pub(super) fn write_incompressible<W: std::io::Write>(
     sink: &mut W,
@@ -335,9 +332,8 @@ pub(super) async fn run_synthetic(
                download + environment start, plus a small scheduling/placement remainder the \
                warm-RTT subtraction does not cancel), which no REPORT line reports. Two runtime families (python managed, \
                rust custom provided.al2023) confirm \
-               the download slope is family-independent. Padding is inert (it is the right \
-               instrument for isolating download here, and is deliberately never used in the \
-               matrix; see README)."
+               the download slope is family-independent. Padding is inert (it isolates \
+               download here, and is deliberately never used in the matrix; see README)."
             .to_string(),
         memory_mb: SYNTH_MEMORY_MB,
         arch: arch.as_str().to_string(),
@@ -350,9 +346,8 @@ pub(super) async fn run_synthetic(
     // Container-image family (opt-in). Runs after the zip families and writes a
     // separate JSON carrying its own co-measured `zip_baseline`, so the shared
     // zip-vs-image chart keeps both series on one session/vantage/date. The only
-    // probe path that shells out to `crane` (daemonless, so it runs in the publish
-    // pipeline); the matrix build/deploy/run and the download-start probe never
-    // require it.
+    // probe path that shells out to `crane`; the matrix build/deploy/run and the
+    // download-start probe never require it.
     if args.with_image {
         super::image::run_synthetic_image(
             repo_root,
@@ -405,10 +400,10 @@ async fn sample_all(
                 .with_context(|| format!("deploying {name}"))?;
             created.push((name.clone(), s3_key));
 
-            // Buffer-then-commit per size: all N samples into a fresh Vec, returned
-            // only if every sample succeeds, so a transient failure re-runs the
-            // whole size (the function stays deployed across retries). Synthetic
-            // functions are trivial handlers, never HTTP-fronted.
+            // Buffer-then-commit per size (see `retry_transient`): a transient
+            // failure re-runs the whole size, and the function stays deployed
+            // across retries. Synthetic functions are trivial handlers, never
+            // HTTP-fronted.
             let samples = sample_cold_series(
                 aws,
                 timed,
@@ -476,7 +471,7 @@ async fn teardown_synthetic(aws: &Aws, created: &[(String, String)]) {
 mod tests {
     use super::*;
 
-    /// A padded zip lands within a hair of its target size (Stored, so no
+    /// A padded zip lands within 4 KiB of its target size (Stored, so no
     /// compression shrinks it) and is a valid, readable archive with the runtime's
     /// base entry + padding. Checked for both runtime families.
     #[test]

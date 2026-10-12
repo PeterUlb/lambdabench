@@ -22,7 +22,7 @@ import software.amazon.smithy.java.server.Service;
  * Scenario "smithy": the Smithy server framework hosted behind a Lambda handler,
  * with NO AWS call. {@code GetMenu} increments a shared in-memory counter
  * (exercising shared state across warm invokes, as a real server would) and
- * returns a constant menu. {@code CreateOrder}/{@code GetOrder} are stubs the
+ * returns a one-item menu. {@code CreateOrder}/{@code GetOrder} are stubs the
  * service contract requires but the benchmark does not invoke. The cold-start
  * delta versus {@code hello} isolates the Smithy server framework overhead.
  *
@@ -60,7 +60,7 @@ public final class CoffeeShopProvider implements SmithyServiceProvider {
         return SERVICE;
     }
 
-    /** Bumps the shared counter and returns a constant menu item. */
+    /** Bumps the shared counter and returns one menu item whose description carries the count. */
     private static GetMenuOutput getMenu(GetMenuInput input, RequestContext context) {
         long n = REQUESTS.incrementAndGet();
         CoffeeItem item = CoffeeItem.builder()

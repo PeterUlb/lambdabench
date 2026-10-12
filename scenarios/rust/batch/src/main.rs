@@ -1,4 +1,4 @@
-//! Scenario "batch": a deserialize-heavy batch record processor (the canonical
+//! Scenario "batch": a deserialize-heavy batch record processor (a typical
 //! Kinesis/SQS-consumer shape).
 //!
 //! At init the handler fetches a large (~16 MB) JSON array of event records from
@@ -57,7 +57,7 @@ struct State {
 
 /// Parse the whole batch and group-by `key` into sum + count. The parse allocates
 /// the full record graph and the map holds an entry per distinct key, both live
-/// for the duration of the call, which is the GC fuel.
+/// for the duration of the call; this is the graph the GC must reclaim.
 fn process_batch(payload: &str) -> Result<Value, Error> {
     // Deserializing into the typed `Vec<Record>` rejects a missing, null, or
     // mistyped `key`/`value` at parse time, so a malformed batch fails loud
@@ -67,8 +67,8 @@ fn process_batch(payload: &str) -> Result<Value, Error> {
     let mut total: i64 = 0;
     // Cross-language fairness: Java's `computeIfAbsent` and Go's map insert reuse
     // the parsed key reference, allocating only at first sight of each distinct
-    // key. Rust's `entry(key.clone())` would clone on every record, an unfair
-    // per-record tax on the median.
+    // key. Rust's `entry(key.clone())` would clone on every record, an extra
+    // per-record allocation that would unfairly raise the median.
     for r in &records {
         if let Some(entry) = groups.get_mut(&r.key) {
             entry.sum += r.value;
@@ -103,8 +103,7 @@ fn process_batch(payload: &str) -> Result<Value, Error> {
 async fn main() -> Result<(), Error> {
     // Init phase: fetch the batch from S3 once and hold it in memory. Retries
     // disabled: a throttle on the init-time fetch must surface as a hard failure,
-    // not be silently retried into an inflated init_ms. A failed run beats wrong
-    // data.
+    // not be silently retried into an inflated init_ms.
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .retry_config(aws_config::retry::RetryConfig::disabled())
         .load()

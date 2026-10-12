@@ -109,8 +109,7 @@ func (s *state) handle(ctx context.Context) (response, error) {
 func main() {
 	// Init phase: resolve config once, then build all three clients. Retries
 	// disabled (aws.NopRetryer): a throttle/transient must surface as a hard
-	// failure, not be silently retried into an inflated Duration. A failed run
-	// beats wrong data.
+	// failure, not be silently retried into an inflated Duration.
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRetryer(func() aws.Retryer { return aws.NopRetryer{} }))
 	if err != nil {

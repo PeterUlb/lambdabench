@@ -85,7 +85,7 @@ async fn handle(c: &Clients) -> Result<Value, Error> {
 async fn main() -> Result<(), Error> {
     // Init phase: resolve config once, then build all three clients. Retries
     // disabled: a throttle/transient must surface as a hard failure, not be
-    // silently retried into an inflated Duration. A failed run beats wrong data.
+    // silently retried into an inflated Duration.
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .retry_config(aws_config::retry::RetryConfig::disabled())
         .load()

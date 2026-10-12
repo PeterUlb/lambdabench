@@ -8,16 +8,16 @@
 // extracts a configured set of claims with type-mapping the way a real authorizer
 // does before handing them to a policy engine.
 //
-// The fairness split: RSA verification runs in a native crypto library (jose ->
+// Fairness: RSA verification runs in a native crypto library (jose ->
 // Node's WebCrypto/OpenSSL here, AWS-LC on Rust), configured symmetrically across
 // runtimes (see README "Fairness note"). But RS256 verify is a cheap public-key
 // op, so native crypto is only a small slice; the surrounding in-language glue
 // (base64url decode, JSON.parse of header/payload, claim extraction/type-mapping)
-// dominates and is what spreads the runtimes apart. The warm gap stays moderate
-// and flat across memory tiers (the native verify is not CPU-starved at 128 MB
-// the way pure JS work is), placing authz between lettercount (all in-language,
-// wide spread) and a pure-crypto tie. Cold start spreads more strongly, by how
-// lean each runtime is at startup.
+// dominates and is where the runtimes differ. The warm gap stays moderate and
+// flat across memory tiers (the native verify is not CPU-starved at 128 MB the
+// way pure in-language work is), so authz sits between lettercount (all
+// in-language, wide spread) and a pure-crypto tie. Cold start differs more,
+// depending on how much each runtime loads at startup.
 
 import { importJWK, jwtVerify } from "jose";
 
@@ -88,8 +88,7 @@ function extractClaims(payload) {
 }
 
 export const handler = async (event) => {
-  // The JWT arrives in the invoke payload as { token: "<jwt>" }, exactly as a
-  // real authorizer receives the token with the request.
+  // The JWT arrives in the invoke payload as { token: "<jwt>" }.
   const token = event?.token;
   if (typeof token !== "string") {
     throw new Error("invoke payload missing string field 'token'");

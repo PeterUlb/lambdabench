@@ -1,7 +1,7 @@
 //! The shared measurement core: one cold sample's decomposition, its
-//! aggregation to p50s + residual spread, and the median. Used identically by
-//! all three modes (`download-start`, the zip `download-scaling`, and the
-//! container-image family), so the residual is computed the same way everywhere.
+//! aggregation to p50s + residual spread, and the median. Used by the
+//! `download-start` mode and both `download-scaling` families (zip and container
+//! image), so the residual is computed the same way everywhere.
 
 use crate::aws::Aws;
 use anyhow::{Context, Result, bail};
@@ -110,8 +110,8 @@ pub(super) async fn take_sample(
     warm_per_sample: u32,
 ) -> Result<Sample> {
     // Retry the force when the invoke lands on a warm sandbox (data-plane
-    // propagation lag). Mirrors run.rs::force_cold_invoke's fail-loud
-    // discipline: require init_ms.
+    // propagation lag). Same fail-loud rule as run.rs::force_cold_invoke:
+    // require init_ms.
     const MAX_COLD_FORCE_ATTEMPTS: u32 = 6;
     let mut cold: Option<(f64, f64, f64)> = None; // (w_cold, init, cold_duration)
     for attempt in 1..=MAX_COLD_FORCE_ATTEMPTS {

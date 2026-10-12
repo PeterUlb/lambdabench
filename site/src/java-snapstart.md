@@ -20,13 +20,13 @@ const cm = colorModel(
 
 SnapStart restores a pre-initialized snapshot instead of running JVM init on every cold start, replacing Init Duration with a Restore Duration. That restore marker's size depends on the handler: usually smaller than init on a heavy handler, though on a light one it can exceed init outright, so the chart's total for such a handler lands to the right of plain Java's. The chart below is the direct within-Java A/B: plain JVM vs SnapStart cold-start P50 across scenarios, architectures, and memory tiers. Plain Java and Java SnapStart are treated as two separate runtimes here, not a tuning knob, because snapshot restore and JVM init are different execution models.
 
-Where priming is meaningful, the SnapStart variant is primed (`oneclient`, `threeclient`, `smithyfull`, `authz`, `batch`; the others are left unprimed), which is what makes the comparison fair. SnapStart snapshots the JVM _after_ init, but it cannot snapshot work that only happens on the first invocation: for an SDK-heavy handler that is chiefly the AWS SDK v2's lazy class loading, the JIT of that code, and the first marshaller construction. Left alone, an SDK-heavy handler pays all of that on the measured invoke, so its unprimed SnapStart would still carry the lazy SDK work on the first restored invoke; this run does not include that unprimed SDK-heavy A/B. The fix an operator ships is to force that work to run before the checkpoint: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, baking the warm-up into the snapshot. Priming can only reach first-invoke cost that a code path the benchmark-owned handler drives before the checkpoint can exercise: the SDK-heavy handlers (`oneclient`, `threeclient`, `smithyfull`), plus `authz` (no SDK, but it warms its RS256-verify path) and `batch` (its first parse).
+Where priming is meaningful, the SnapStart variant is primed (`oneclient`, `threeclient`, `smithyfull`, `authz`, `batch`; the others are left unprimed), which is what makes the comparison fair. SnapStart snapshots the JVM _after_ init, but it cannot snapshot work that only happens on the first invocation: for an SDK-heavy handler that is chiefly the AWS SDK v2's lazy class loading, the JIT of that code, and the first marshaller construction. Left alone, an SDK-heavy handler pays all of that on the measured invoke, so its unprimed SnapStart would still carry the lazy SDK work on the first restored invoke; this run does not include that unprimed SDK-heavy A/B. The fix an operator ships is to force that work to run before the checkpoint: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, baking the warm-up into the snapshot. Priming only reaches first-invoke cost on a code path the benchmark-owned handler can exercise before the checkpoint: the SDK-heavy handlers (`oneclient`, `threeclient`, `smithyfull`), plus `authz` (no SDK, but it warms its RS256-verify path) and `batch` (its first parse).
 
 Where priming reaches the dominant lazy first-invoke work (the SDK-heavy handlers), the expected ordering is `primed < plain < unprimed`. That ordering is not universal: on handlers where the init being skipped is small or a framework path survives priming, primed SnapStart can still trail plain Java (see [which scenarios win and lose](#when-snap-start-wins-and-when-it-loses)). Only primed and plain are benchmarked here, so the chart below is primed vs plain; the unprimed leg is inferred, not measured. The dashboard measures the primed config (the same jar runs the hook as a no-op when SnapStart is off). The handlers with nothing for priming to reach are left unprimed: the probes with no first-invoke SDK cost for priming to hoist (`hello`, `lettercount`, `cache`) and the framework-only `smithy`, whose first-request cost sits behind a smithy-java path no public hook can drive.
 
 A residual first-request cost survives priming on every scenario: restore is lazy, so the first invocation likely still pages the snapshot's memory back in and JITs any path not exercised before the checkpoint. SnapStart's first request is therefore never as fast as a warm one.
 
-## A SnapStart crash or timeout re-runs Init, it does not re-restore
+## After a crash or timeout, SnapStart runs a full init
 
 SnapStart's whole premise is that a cold start restores a snapshot instead of running JVM init. That
 holds for any _healthy_ new environment: one brought up to meet load (scaling), and one Lambda brings
@@ -52,13 +52,12 @@ range of plain JVM init, not the smaller restore marker.
 That `INIT_REPORT` is also where SnapStart's recovery is _more visible_ than a plain function's: a
 plain suppressed init emits no `INIT_REPORT` and hides its cost inside the next invocation's
 `Duration` (see the [lifecycle page](./lifecycle#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)),
-whereas SnapStart always writes an explicit `INIT_REPORT` when it runs a full init, so here the
-re-init shows up as its own line rather than folded away. As with the general suppressed-init case,
-an _ordinary_ handler exception did not trigger this: the process survived and the next
-invocation was a normal warm one. It is specifically the process-ending failures that drop the
-function onto the full-init recovery path.
+whereas SnapStart always writes an explicit `INIT_REPORT` when it runs a full init. As with the
+general suppressed-init case, an _ordinary_ handler exception did not trigger this: the process
+survived and the next invocation was a normal warm one. It is specifically the process-ending
+failures that drop the function onto the full-init recovery path.
 
-The consequence is sharper than the general suppressed-init story. On a plain function a crash
+The consequence is worse than in the general suppressed-init case. On a plain function a crash
 re-runs the init a cold start was already paying. On SnapStart a crash replaces a restore
 with a full init, so that recovery abandons the fast path rather than merely re-paying it,
 and the from-scratch JVM init it runs instead is the _larger_ of the two costs (on an

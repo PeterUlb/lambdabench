@@ -10,8 +10,8 @@
 //   1. It is in-language CPU work. The counting is a tight loop over each string's
 //      UTF-16 code units, running in the V8 JIT (vs Rust machine code) rather than
 //      a shared native library. A hashing or JSON.stringify-heavy workload would
-//      spend most time in native C++/OpenSSL shared by both, measuring the library
-//      not the language.
+//      spend most time in native C++/OpenSSL shared by every runtime, measuring
+//      the library not the language.
 //   2. JSON.parse rebuilds a fresh object graph each invoke, so under a
 //      constrained heap V8 may show GC pauses in the warm tail while a non-GC
 //      runtime stays flat.
@@ -26,7 +26,7 @@ const BUCKET = process.env.LAMBDABENCH_BUCKET;
 const OBJECT_KEY = process.env.LAMBDABENCH_LETTERCOUNT_KEY;
 
 // maxAttempts:1 disables SDK retries: a throttle on the init S3 fetch must fail
-// hard rather than inflate init_ms via a silent retry. Failed run beats wrong data.
+// hard rather than inflate init_ms via a silent retry.
 const s3 = new S3Client({ maxAttempts: 1 });
 
 // Init phase: fetch the JSON payload from S3 once and hold it in memory.
@@ -36,7 +36,7 @@ const payload = await (async () => {
 })();
 
 export const handler = async () => {
-  // Parse (allocates a fresh object graph, the GC fuel) then count lowercase
+  // Parse (allocates a fresh object graph the GC must reclaim) then count lowercase
   // ASCII letters across all entries into 26 totals (index 0 = 'a' .. 25 = 'z').
   const arr = JSON.parse(payload);
   const totals = new Array(26).fill(0);

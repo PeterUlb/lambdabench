@@ -5,7 +5,7 @@ edition = "2024"
 license = "Apache-2.0"
 
 # Scenario "smithy": host the generated Smithy server SDK behind a Lambda
-# handler with NO AWS call. GetMenu returns a constant, so the cold delta versus
+# handler with NO AWS call. GetMenu returns a one-item menu, so the cold delta versus
 # `hello` isolates pure Smithy-framework overhead.
 
 [[bin]]

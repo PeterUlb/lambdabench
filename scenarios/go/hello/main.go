@@ -12,8 +12,9 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// response is the constant payload, byte-for-byte equivalent to the other
-// languages' hello output.
+// response is the constant payload, with the same fields and values as the
+// other languages' hello output (key order can differ: Java's Map.of does not
+// guarantee one).
 type response struct {
 	Message  string `json:"message"`
 	Scenario string `json:"scenario"`

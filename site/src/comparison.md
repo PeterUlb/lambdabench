@@ -61,7 +61,7 @@ display(C.legend(v));
 display(C.tailLatency(v));
 ```
 
-## Warm tail vs median: the retained-heap GC signature (`cache`)
+## Warm tail vs median on `cache` (retained-heap GC)
 
 <div class="chart-sub"><code>cache</code> on one log-y panel: SOLID = warm P50, shaded = P10–P90, DASHED = P99. <strong>Absolute height is the signal here, not the line-to-line gap.</strong> On a log scale the line-to-line distance is the <em>ratio</em>, which a fast median inflates: a runtime can post a large P99/P50 ratio yet sit only a few ms above its median, while a slow one shows a small ratio over a far bigger absolute pause. The GC signal is in where the lines <em>sit</em>: at the low, CPU-starved tiers a tracing GC drives the P99 up. The non-GC runtime holds the lowest tail at every tier and stays close to its own median above the floor; the tracing-GC runtimes sit higher, with their largest tails at or near the low tiers. How much additional vCPU reduces a tail, and whether the lowest tier is the worst one, varies by runtime and is visible per line.</div>
 
@@ -72,7 +72,7 @@ display(C.legend(v));
 display(C.tailVsMedian(v));
 ```
 
-## Warm CPU-sensitivity: how much does low memory slow each runtime?
+## Warm CPU sensitivity: slowdown at low memory
 
 <div class="chart-sub">Memory = CPU on Lambda. Warm P50 normalized to each series' own value at the max memory tier (1.0 = the series' P50 at the largest memory tier; values below 1.0 mean that tier measured faster than the baseline). FLAT means CPU-insensitive (runs at the lowest tier with no penalty); a CLIMB to the left means CPU-bound (requires more memory to reach full speed).</div>
 
@@ -117,8 +117,8 @@ display(archWinRate(v));
 
 ```js
 // The per-cell detail behind the win-rate above: one dumbbell row per scenario ×
-// memory. Dense enough that the table above is the verdict, so it stays on this
-// page collapsed rather than moving to a page of its own.
+// memory. It is dense and the table above already summarizes it, so it is
+// collapsed here.
 const archDetail = html`<details class="chart-details">
   <summary>
     Per-cell detail: arm64 vs x86_64 dumbbells (cold &amp; warm)

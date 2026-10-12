@@ -56,7 +56,7 @@ const inputPath = findInput();
 const metaPath = inputPath.replace(/\.jsonl(\.gz)?$/, ".meta.json");
 // A real run always writes the meta before the writer, so a results file with no
 // adjacent .meta.json is anomalous: without it assertRunComplete sees no
-// completeness signals and waves the run through. This is not "an older run with
+// completeness signals and accepts the run. This is not "an older run with
 // no signal" (that is a meta lacking specific fields); the sidecar was lost/moved
 // or LAMBDABENCH_RESULTS points at a file with no meta. Fail loud.
 if (!existsSync(metaPath)) {

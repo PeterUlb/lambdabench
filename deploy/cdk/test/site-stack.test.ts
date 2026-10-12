@@ -4,12 +4,12 @@ import { EdgeStack } from "../lib/edge-stack";
 import { SiteStack } from "../lib/site-stack";
 import { HTML_REDIRECT_FUNCTION_CODE } from "../lib/html-redirect-function";
 
-// Locks the security posture of the hosting layer. Both buckets (the CloudFront
+// Checks the security settings of the hosting layer. Both buckets (the CloudFront
 // origin and the raw-results archive) are private, encrypted, versioned, and
-// TLS-only, and the distribution terminates on strong TLS behind the WAF. A
+// TLS-only, and the distribution requires strong TLS and sits behind the WAF. A
 // regression that loosened any of these (dropped a public-access block, removed
 // SSE, weakened the min TLS version) would be silent in a `cdk deploy`, so each
-// property is asserted explicitly rather than trusted to the construct defaults.
+// property is asserted explicitly instead of relying on the construct defaults.
 describe("SiteStack", () => {
   const app = new cdk.App();
   // EdgeStack supplies the cross-region cert + Web ACL SiteStack consumes.
@@ -128,7 +128,7 @@ describe("SiteStack", () => {
   });
 });
 
-// Runs the function source itself: as a string, nothing else checks it before the edge.
+// Executes the function source: it is a string, so nothing else checks it before deploy.
 describe("HTML_REDIRECT_FUNCTION_CODE", () => {
   type Result = {
     uri?: string;

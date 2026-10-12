@@ -7,15 +7,13 @@
 //! sizes. This module owns everything AWS-side about the image itself: the
 //! private ECR repository the images are pushed to, reading back the true pushed
 //! size, and teardown. The image assembly + push (`crane mutate`) lives in
-//! `probe.rs`, since it is a build step, not an AWS SDK call. crane is
+//! `probe/image.rs`, since it is a build step, not an AWS SDK call. crane is
 //! daemonless, so this path runs unattended in the ECS Fargate publish task (no
 //! Docker/finch VM).
 //!
 //! The repository carries the `lambdabench-` stem for consistency with the other
-//! benchmark resources, but teardown reclaims it by exact name
-//! (`delete_ecr_repo`), not a prefix sweep: the bencher owns only this one repo,
-//! and a prefix sweep would also catch the CDK-managed `lambdabench-runner` repo
-//! it does not own.
+//! benchmark resources, but teardown deletes it by exact name, not a prefix sweep
+//! (see `delete_ecr_repo`).
 
 use super::Aws;
 use crate::config::{ECR_REPO, REGION};
@@ -79,7 +77,7 @@ impl Aws {
         }
 
         // Apply the lifecycle policy on every ensure so a repo left by an older
-        // run converges onto the current backstop. Idempotent (last write wins).
+        // run gets the current policy. Idempotent (last write wins).
         self.ecr
             .put_lifecycle_policy()
             .repository_name(ECR_REPO)
@@ -221,7 +219,7 @@ impl Aws {
     /// Targets the exact repo by name rather than sweeping the `lambdabench-`
     /// prefix. The bencher creates only this one repository (the image family
     /// varies by tag, not by repo), so a prefix sweep reclaims nothing extra while
-    /// risking a sibling `lambdabench-*` repo it does not own: notably the
+    /// risking a sibling `lambdabench-*` repo it does not own, in particular the
     /// CDK-managed `lambdabench-runner` repo (the runner image the ECS task pulls),
     /// whose deletion would break the next run's image pull.
     pub async fn delete_ecr_repo(&self) -> Result<()> {

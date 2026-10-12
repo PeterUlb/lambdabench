@@ -35,7 +35,7 @@ export const findCell = (cells, { lang, arch, scenario, memory_mb }) =>
 
 // Runtimes to render in a SnapStart A/B view, in display order: those present in
 // `snapCells`, narrowed to the active languages and an optional `only` scope. A
-// per-runtime page passes `only: ["java"]` so it never sprouts rows for another
+// per-runtime page passes `only: ["java"]` so it never gains rows for another
 // runtime that later gains a SnapStart variant; omitting `only` shows all.
 export const snapLangsToShow = (snapCells, activeLangs, only = null) =>
   [...new Set(snapCells.map((c) => c.lang))]

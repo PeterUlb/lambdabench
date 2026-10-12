@@ -1,7 +1,7 @@
 // Scenario "smithy": host the generated Smithy server SDK behind a Lambda
 // handler via the API Gateway adapter, with NO AWS call. GetMenu increments a
 // shared in-memory counter (carried on the service context object, the
-// idiomatic SSDK shared-state path) and returns a constant, so the cold delta
+// idiomatic SSDK shared-state path) and returns a one-item menu, so the cold delta
 // versus `hello` isolates pure Smithy server framework overhead.
 //
 // The bencher invokes this function with a synthetic API Gateway v2 event

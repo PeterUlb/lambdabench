@@ -1,7 +1,8 @@
 //! Teardown: deletes every benchmark function, its CloudWatch log groups, the
-//! execution role, and the table. Only targets resources whose EXACT names the
-//! project defines: the function/log-group sets are reconstructed from config
-//! (`all_managed_function_names` / `all_managed_log_group_names`), and the role,
+//! execution role, the table, the S3 bucket, the KMS key, and the ECR repo. Only
+//! targets resources whose EXACT names the project defines: the function/log-group
+//! sets are reconstructed from config (`all_managed_function_names` /
+//! `all_managed_log_group_names`), and the role,
 //! table, bucket, KMS key, and ECR repo by their fixed names. It never lists the
 //! account and deletes by prefix, so a stranger's function that merely shares the
 //! `lambdabench-` stem is never caught.
@@ -37,7 +38,7 @@ const TEARDOWN_CONCURRENCY: usize = 8;
 /// the case a concurrency cap does not bound the rate for, so each delete's START
 /// is gated on the shared control-plane rate limiter (`CONTROL_PLANE_TPS`, as the
 /// run loop's `delete_version` uses); `TEARDOWN_CONCURRENCY` then caps how many
-/// run in flight, mirroring the run loop's semaphore + rate-limiter pairing.
+/// run in flight, mirroring the run loop's pool cap + rate-limiter pairing.
 pub async fn teardown(aws: &Aws) -> Result<()> {
     let names = config::all_managed_function_names();
     println!("Deleting {} functions...", names.len());

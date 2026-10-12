@@ -11,7 +11,7 @@
 //     (eviction + insert). The replaced buffers become garbage while the live set
 //     stays full, generating garbage against a large permanently-live heap.
 //  2. Scan: read every 10th entry and sum a byte. This keeps the whole retained
-//     set genuinely live and read, so it cannot be elided and a tracing GC has to
+//     set live and read, so it cannot be elided and a tracing GC has to
 //     mark all of it.
 //
 // Why this workload (contrast `batch`): a tracing GC's per-cycle cost scales with
@@ -70,7 +70,7 @@ type response struct {
 
 // churnAndScan replaces `churn` entries then scans every 10th entry. The replaced
 // buffers become garbage while the live set stays full, so the GC keeps tracing
-// the whole ~100 MB set. The scan keeps it genuinely live.
+// the whole ~100 MB set. The scan keeps it live.
 func churnAndScan() uint64 {
 	for c := 0; c < churn; c++ {
 		rot = (rot + 1) % entries

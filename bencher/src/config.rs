@@ -1,7 +1,7 @@
 //! Benchmark configuration: the matrix, naming conventions, and tunable counts.
 //!
-//! Everything that defines "what gets built, deployed, and measured" lives here
-//! so the rest of the driver stays mechanism, not policy.
+//! Everything that defines "what gets built, deployed, and measured" lives here,
+//! so the rest of the driver holds no benchmark policy.
 
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -103,8 +103,8 @@ pub const S3_OBJECT_BODY: &str = "lambdabench-seeded-s3-object-body";
 pub const S3_LETTERCOUNT_KEY: &str = "lambdabench-lettercount.json";
 /// Minimum serialized size of the seeded `lettercount` payload, in bytes. The
 /// bencher generates a deterministic ASCII JSON document at least this large.
-/// Tunable: a larger payload means more allocation per invoke (more GC fuel for
-/// the Node runtime) at the cost of a slower init fetch.
+/// Tunable: a larger payload means more allocation per invoke (more GC work for
+/// the garbage-collected runtimes) at the cost of a slower init fetch.
 pub const S3_LETTERCOUNT_PAYLOAD_BYTES: usize = 1_000_000;
 
 /// S3 object read once at init by the `batch` scenario: a large JSON array of
@@ -118,8 +118,8 @@ pub const S3_BATCH_KEY: &str = "lambdabench-batch.json";
 /// tiers (where used ≈ allocated, so a tracing GC runs near its limit).
 pub const S3_BATCH_PAYLOAD_BYTES: usize = 16_000_000;
 /// Number of distinct group keys in the `batch` payload. Bounds the group map
-/// size; moderate cardinality keeps the map meaningfully large without dominating
-/// over the parsed-record graph.
+/// size; moderate cardinality keeps the map large enough to matter while the
+/// parsed records still make up most of the heap.
 pub const S3_BATCH_KEY_CARDINALITY: usize = 1_000;
 
 /// Lambda's fixed log-group prefix. Lambda auto-creates `/aws/lambda/<function>`
@@ -171,7 +171,7 @@ pub const PREWARM_NONEXISTENT_FN: &str = "lambdabench-probe-prewarm-nonexistent"
 
 /// Fixed write targets for the `smithyfull` realistic CreateOrder flow. Fixed
 /// keys make the writes idempotent (each invoke overwrites the same item /
-/// object), so however many cold/warm invocations run never accumulate data.
+/// object), so repeated cold/warm invocations never accumulate data.
 pub const ORDER_PK: &str = "lambdabench-order";
 pub const S3_RECEIPT_KEY: &str = "lambdabench-receipt";
 
@@ -248,7 +248,7 @@ impl Lang {
 /// The first five are handler shapes read on cold start. `hello` is the bare
 /// baseline; the other four add a layer on top of it. Compare each to the shape it
 /// builds on, never by subtracting across the set: each initializes its own way,
-/// so the layers do not additively decompose.
+/// so the per-layer costs do not add up.
 ///   hello        = runtime baseline (no framework, no AWS client)
 ///   smithy       = framework only (Smithy server, no AWS call)
 ///   one_client   = construct + call 1 AWS client (DDB GetItem)
@@ -261,20 +261,21 @@ impl Lang {
 ///                 lib, no retained heap. Widest, cliff-shaped warm spread.
 ///   authz       = the lettercount counterpart with a small NATIVE-crypto slice:
 ///                 RS256 verify (symmetric across languages) then in-language claim
-///                 mapping. Verify is cheap, so the glue still dominates; warm
-///                 spread stays moderate and flat.
+///                 mapping. Verify is cheap, so the claim mapping still dominates;
+///                 warm spread stays moderate and flat.
 ///   batch       = deserialize-heavy record processor. Two axes: the MEDIAN is each
 ///                 language's stdlib JSON-parser speed (the dominant signal;
 ///                 keeping the idiomatic parser avoids the SHA trap of comparing
 ///                 libraries), the low-memory TAIL is transient allocation + GC (the
 ///                 parsed batch and group map are live at once). Read the tail in
 ///                 absolute ms, not a P99.9/median ratio.
-///   cache       = the dedicated GC probe batch cannot be: a ~100 MB RETAINED live
+///   cache       = a dedicated GC probe (batch is not one): a ~100 MB RETAINED live
 ///                 set held across invokes with a churned fraction each invoke, so a
 ///                 tracing GC re-traces the whole set every cycle (tracing cost
 ///                 scales with the live heap, not the garbage). The tail separates
-///                 from a flat median at the fractional-vCPU tiers. An indexed ring
-///                 of buffers, not a hashmap, to isolate the GC, not map impls.
+///                 from a flat median at the fractional-vCPU tiers. Uses an indexed
+///                 ring of buffers instead of a hashmap so map implementations do
+///                 not affect the GC measurement.
 ///
 /// `batch` floors at `min_memory_mb` (the ~16 MB batch OOMs the smallest tiers);
 /// `cache` floors at 512 MB (its retained set OOMs / CPU-starves below).
@@ -336,9 +337,9 @@ impl Scenario {
     /// variant-aware because baseline footprints differ, and each floor is set
     /// empirically at the lowest tier the (scenario, runtime) reliably completes.
     ///
-    /// - `batch`: 256 on Rust/Node (128 MB ≈ 0.07 vCPU CPU-starves Node past the
-    ///   30 s timeout; Rust uses ~117 MB at 256). 512 on plain Java (OOMs at 256,
-    ///   where Node survives at ~210 MB). 1024 on Java SnapStart (the restored
+    /// - `batch`: 256 on Rust/Node/Python/Go (128 MB ≈ 0.07 vCPU CPU-starves Node
+    ///   past the 30 s timeout; Rust uses ~117 MB at 256). 512 on plain Java (OOMs
+    ///   at 256, where Node survives at ~210 MB). 1024 on Java SnapStart (the restored
     ///   snapshot's resident heap/metaspace OOMs it at 512, where plain Java fits).
     /// - `smithyfull` on Java SnapStart: 256 (at 128 MB the restore competes with
     ///   the first invoke's CreateOrder write flow and times out at ~30.2 s; plain
@@ -419,8 +420,8 @@ impl Scenario {
             // every (512+) tier; its churn+scan is fast enough not to need thinning.
             Scenario::Cache => (5, 1500),
             Scenario::LetterCount | Scenario::Authz => (5, 1500),
-            // batch's GC pressure is per-invoke, so 200 warm fully expresses the
-            // tail; cold is cut to 15 (still characterizes cold start) because at
+            // batch's GC pressure is per-invoke, so 200 warm invokes are enough to
+            // show the tail; cold is cut to 15 (still characterizes cold start) because at
             // the starved tiers 50 cold × 200 warm runs ~5 h/cell, long enough to
             // risk session-token expiry. Starved Python is slower still, so cut cold
             // to 5 there.
@@ -536,7 +537,7 @@ pub enum Profile {
 }
 
 /// Full-profile cold/warm counts for the light / I/O scenarios. Cold start is
-/// their story; 50 cold cycles bounds the warm tail's confidence (warm samples
+/// what they measure; 50 cold cycles bounds the warm tail's confidence (warm samples
 /// within a cycle share a sandbox, so the cold-cycle count is the
 /// independent-replicate count), and 50 warm/cycle is already past the P99/P99.9
 /// thresholds in `site/src/lib/stats.js`. The CPU probes trade this for
@@ -550,8 +551,9 @@ pub const SMOKE_COUNTS: (u32, u32) = (2, 2);
 /// Compiler optimization level, a Rust-only benchmark dimension. `opt-level=3`
 /// maximizes runtime speed at the cost of larger binaries; `opt-level=z`
 /// minimizes binary size, which can load (and thus cold-start) faster. Which
-/// wins for cold start is scenario-dependent, so we measure both. Node has no
-/// equivalent knob (esbuild minification is always on), so it carries no opt.
+/// wins for cold start is scenario-dependent, so we measure both. The other
+/// languages carry no opt (Node has no equivalent knob: esbuild minification is
+/// always on).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Opt {
@@ -590,13 +592,13 @@ impl Opt {
 /// same one-time cost in opposing lifecycle phases (the `oneclient` Invoke-phase
 /// cliff vs the `lettercount` Init-phase flat bump).
 ///
-/// Disabling it buys latency at a security cost: it drops one of AWS-LC's
+/// Disabling it lowers latency at a security cost: it drops one of AWS-LC's
 /// entropy sources. One independent source always remains (the OS); a
 /// second (`RDRAND`/`RNDR`) only where the CPU has a hardware RNG, which arm64
 /// Graviton2 lacks, so on that part the two seeding slots both fall back to the
 /// OS and are no longer independent (see the README jitter Finding / rust.md).
 /// Java SnapStart gets the same opt-out automatically via AWS-LC's VM-UBE
-/// detection, so no jitter cliff shows there. Full story in the README "Finding:
+/// detection, so no jitter cliff shows there. Details in the README "Finding:
 /// the AWS-LC jitter-entropy cold-start tax"; references: aws/aws-lc-rs#899 and
 /// the AWS Rust SDK Lambda mitigation announcement (smithy-lang/smithy-rs#4541).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
@@ -633,12 +635,12 @@ pub struct Cell {
     pub scenario: Scenario,
     pub arch: Arch,
     pub memory_mb: i32,
-    /// Rust-only optimization level; `None` for Node and Java.
+    /// Rust-only optimization level; `None` for every other language.
     pub opt: Option<Opt>,
     /// Java-only SnapStart dimension: when true, the function has SnapStart
     /// enabled (`ApplyOn=PublishedVersions`) and is measured via published
-    /// versions rather than `$LATEST`. Always `false` for Rust and Node, which
-    /// have no SnapStart equivalent.
+    /// versions rather than `$LATEST`. Always `false` for the other languages,
+    /// which have no SnapStart equivalent.
     pub snapstart: bool,
     /// Rust-only `aws-lc-rs` jitter-entropy build dimension. `None` for non-Rust
     /// cells; `Some(Jitter::Off)` for the standing Rust matrix; `Some(Jitter::On)`
@@ -697,8 +699,9 @@ impl Cell {
     /// rules:
     ///   1. the scenario's `full_base_counts` (lang/memory-aware), EXCEPT
     ///   2. jitter-A/B cells use `FULL_LIGHT_COUNTS` instead: the lettercount
-    ///      override (5 cold) starves the jitter chart's P50, and 50 cold matches
-    ///      `oneclient`'s density so both panels carry comparable uncertainty; then
+    ///      override (5 cold) leaves too few samples for the jitter chart's P50,
+    ///      and 50 cold matches `oneclient`'s density so both panels carry
+    ///      comparable uncertainty; then
     ///   3. SnapStart cells clamp cold cycles to `SNAPSTART_COLD_CYCLES` (keeping
     ///      warm), since each SnapStart cold sample publishes a fresh version
     ///      (~10-30 s). The clamp only ever reduces.
@@ -740,11 +743,11 @@ impl Cell {
         parts.join("-")
     }
 
-    /// Lambda handler string for this cell. Rust custom runtimes ignore it (the
-    /// bootstrap is the entrypoint); Node points at the bundled ESM module
-    /// export. Java is scenario-aware: the Smithy scenarios run behind the
-    /// smithy-java `LambdaEndpoint`, while the others use a per-scenario handler
-    /// class under the `lambdabench` package.
+    /// Lambda handler string for this cell. Rust and Go custom runtimes ignore it
+    /// (the bootstrap is the entrypoint); Node points at the bundled ESM module
+    /// export; Python at `handler.handler`. Java is scenario-aware: the Smithy
+    /// scenarios run behind the smithy-java `LambdaEndpoint`, while the others use
+    /// a per-scenario handler class under the `lambdabench` package.
     pub fn handler(&self) -> String {
         match self.lang {
             // Go and Rust both deploy a custom-runtime `bootstrap` executable,
@@ -766,8 +769,10 @@ impl Cell {
     }
 
     /// The build artifact this cell deploys. Many cells share one artifact:
-    /// Rust binaries differ by (scenario, arch, opt, jitter); Node and Java zips
-    /// differ by scenario only (arch-independent bytecode/JS). SnapStart is a pure
+    /// Rust binaries differ by (scenario, arch, opt, jitter); Go binaries by
+    /// (scenario, arch); Node and Java zips differ by scenario only
+    /// (arch-independent bytecode/JS); Python bundles differ by scenario, plus arch
+    /// for `authz` (see `arch_significant`). SnapStart is a pure
     /// function-config knob (the jar is identical), so it does not key the
     /// artifact.
     pub fn artifact_key(&self) -> ArtifactKey {
@@ -830,13 +835,13 @@ impl fmt::Display for Cell {
 }
 
 /// Identifies a unique build artifact (deduped across memory configs, and
-/// across arch for Node).
+/// across arch where the bytes are arch-independent; see `arch_significant`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArtifactKey {
     pub lang: Lang,
     pub scenario: Scenario,
     pub arch: Arch,
-    /// Rust-only optimization level; `None` for Node.
+    /// Rust-only optimization level; `None` for non-Rust.
     pub opt: Option<Opt>,
     /// Rust-only `aws-lc-rs` jitter-entropy build dimension; `None` for non-Rust.
     /// `Some(Jitter::Off)` is the standing matrix default; only `Some(Jitter::On)`
@@ -888,8 +893,8 @@ pub fn all_cells() -> Vec<Cell> {
 
     for lang in Lang::ALL {
         for scenario in Scenario::ALL {
-            // A language may not host every scenario (Python skips the Smithy
-            // scenarios: smithy-python has no server SDK). Skip those entirely
+            // A language may not host every scenario (Python and Go skip the
+            // Smithy scenarios; see `Lang::supports`). Skip those entirely
             // so no cell, artifact, or function is ever produced for them.
             if !lang.supports(scenario) {
                 continue;
@@ -1034,7 +1039,7 @@ pub fn all_managed_log_group_names() -> Vec<String> {
 /// The benchmark matrix restricted to the given languages. An empty slice means
 /// "no restriction" (the full matrix), so callers can pass the CLI value
 /// through unconditionally. Used to scope build, deploy, and run to a subset of
-/// languages (e.g. only rust + node when a third language is also defined).
+/// languages (e.g. only rust + node).
 pub fn cells_for_langs(langs: &[Lang]) -> Vec<Cell> {
     all_cells()
         .into_iter()
@@ -1457,7 +1462,7 @@ mod tests {
     }
 
     /// The CPU-probe counts are thinned on the slowest runtime (Python) at the
-    /// starved low tiers (≤256 MB), but unchanged for compiled runtimes and for
+    /// starved low tiers (≤256 MB), but unchanged for every other runtime and for
     /// Python at the larger tiers. All memory tiers stay in the matrix (we thin
     /// samples, not tiers).
     #[test]
@@ -1480,7 +1485,7 @@ mod tests {
             Scenario::Batch.full_base_counts(Lang::Python, 512),
             (15, 200)
         );
-        // Compiled runtimes are never thinned, even at the smallest tier.
+        // Other runtimes are never thinned, even at the smallest tier.
         assert_eq!(
             Scenario::LetterCount.full_base_counts(Lang::Rust, 128),
             (5, 1500)

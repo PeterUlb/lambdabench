@@ -26,7 +26,7 @@ export interface SiteStackProps extends cdk.StackProps {
  * The S3 bucket is private and reached only through CloudFront via Origin
  * Access Control (OAC), the private-origin pattern the flat-rate plan supports.
  * Apex domain, TLS certificate, and Web ACL are wired up at synth time, so a
- * `cdk deploy` never reconciles them away. The flat-rate plan subscription is the
+ * `cdk deploy` never reverts them. The flat-rate plan subscription is the
  * only step still done via the CloudFront console (see deploy/README.md).
  */
 export class SiteStack extends cdk.Stack {
@@ -66,7 +66,7 @@ export class SiteStack extends cdk.Stack {
     });
 
     // Private archive for raw benchmark output (run-*.jsonl.gz + run-*.meta.json)
-    // plus the documentation-probe outputs (lifecycle-*-<id>.json). Same posture as
+    // plus the documentation-probe outputs (lifecycle-*-<id>.json). Same settings as
     // the site bucket, but no CloudFront origin: reachable only via authenticated
     // S3. The runner archives the matrix run here immediately after it completes
     // (before the probes) so a failed probe or publish does not lose it.

@@ -167,7 +167,7 @@ impl Aws {
     /// Creates a Cell-free function from a raw zip (the synthetic download-scaling
     /// probe's ephemeral padded functions), always staging in S3 (they are large by
     /// construction) and returning the staged key for later teardown. Same
-    /// role-propagation retry and `wait_ready` discipline as `ensure_function`'s
+    /// role-propagation retry and `wait_ready` handling as `ensure_function`'s
     /// create path, but with no environment or SnapStart. Assumes a fresh,
     /// run-unique name; a pre-existing one surfaces as a create conflict.
     ///
@@ -234,7 +234,7 @@ impl Aws {
     /// Unlike the zip path, an image function sets NEITHER `runtime` NOR `handler`
     /// (both are zip-only; specifying a runtime for an image errors). The base
     /// image's ENTRYPOINT (the runtime interface client) plus its `CMD` carry the
-    /// handler. Reuses the same role-propagation retry and `wait_ready` discipline
+    /// handler. Reuses the same role-propagation retry and `wait_ready` handling
     /// as `create_function_from_zip`; `wait_ready`'s `State::Active` wait also
     /// covers the image-optimization phase (Pending -> Active) Lambda runs after
     /// the image is uploaded.
@@ -431,8 +431,8 @@ impl Aws {
 
     /// Bumps ONLY the `COLD_NONCE` env var on `$LATEST` (preserving every other
     /// var) and waits until that update has landed (control-plane readiness only;
-    /// the old sandbox retires asynchronously and is not awaited here, so callers
-    /// forcing a cold start must still verify the invoke landed cold). Shared by
+    /// see `force_cold` for why callers must still verify the invoke landed cold).
+    /// Shared by
     /// `force_cold` and `publish_cold_version` (which bumps before publishing so
     /// the new version is not deduped).
     ///
@@ -484,7 +484,7 @@ impl Aws {
     /// warm-sandbox retry loop (unlike the `$LATEST` env-bump path in `force_cold`).
     ///
     /// `COLD_NONCE` is bumped on `$LATEST` first so the config change makes
-    /// `PublishVersion` mint a new version rather than dedupe an unchanged one. Then
+    /// `PublishVersion` create a new version rather than dedupe an unchanged one. Then
     /// it waits for the published version to reach `State::Active` (snapshot ready).
     /// The caller must `delete_version` the returned version to reclaim storage.
     pub async fn publish_cold_version(&self, cell: &Cell, nonce: &str) -> Result<String> {
@@ -889,8 +889,8 @@ fn snap_start_for(cell: &Cell) -> SnapStart {
 /// v1 proxy event (`path`/`httpMethod`/`body`). All other scenarios take a
 /// plain JSON object regardless of language.
 ///
-/// `pub(crate)` so the probe's shared name-based `take_sample` (which no longer
-/// holds a `Cell`) can compute the same payload before invoking by name.
+/// `pub(crate)` so the probe's shared name-based `take_sample` (which holds no
+/// `Cell`) can compute the same payload before invoking by name.
 pub(crate) fn invoke_payload(cell: &Cell) -> String {
     use crate::config::Lang;
     match (cell.scenario, cell.lang) {
@@ -929,7 +929,7 @@ pub(crate) fn invoke_payload(cell: &Cell) -> String {
         .to_string(),
         // `smithyfull` (realistic) routes POST /order with a real JSON body, so
         // the SSDK deserializes + validates the input and serializes a
-        // constrained response, exercising the framework's actual work.
+        // constrained response (the framework's full request path).
         (Scenario::SmithyFull, _) => r#"{
   "version": "2.0",
   "routeKey": "POST /order",

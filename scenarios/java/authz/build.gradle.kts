@@ -9,7 +9,7 @@ dependencies {
 }
 
 // The public JWK is a build-time fixture generated (idempotently) by the shared
-// bencher generator: the SAME fixture the Rust and Node authz handlers embed.
+// bencher generator: the SAME fixture every language's authz handler uses.
 // It is gitignored (it pairs with a private key), so generate it before
 // packaging resources and copy it into the build resources dir.
 val fixturesDir = file("$rootDir/../../bencher/fixtures")

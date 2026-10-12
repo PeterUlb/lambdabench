@@ -5,7 +5,7 @@
 //! handler, (4) run the handler. The Lambda `REPORT` line only ever exposes
 //! phases 3 (`Init Duration`) and 4 (the cold invoke's `Duration`); phases 1 and
 //! 2 happen BEFORE the runtime signals readiness and appear in no function-side
-//! signal or CloudWatch function metric. The only vantage point on them is the
+//! signal or CloudWatch function metric. The only way to observe them is the
 //! caller's wall-clock around the `Invoke` API call.
 //!
 //! This probe isolates phases 1+2 by subtraction. With the SDK's HTTPS
@@ -146,7 +146,7 @@ pub(super) struct ProbeCommon {
 /// `Invoke` against a NON-EXISTENT function and swallowing the expected
 /// `ResourceNotFoundException`. The transport connection is established before the
 /// request is routed to any function, so a not-found response comes back over the
-/// very connection a real invoke would reuse. Avoids needing a dedicated primer
+/// same connection a real invoke would reuse. Avoids needing a dedicated primer
 /// function deployed (and a real primer doubling as a probe target). Any error
 /// other than not-found (auth, throttle, network) is surfaced, since it would mean
 /// the connection is not actually healthy.
@@ -178,9 +178,9 @@ pub(super) async fn prewarm_connection(client: &aws_sdk_lambda::Client) -> Resul
 /// Mirrors the matrix's `results/run-<id>.jsonl.gz` convention on purpose: the
 /// probe output is NOT committed (gitignored like the raw runs), the site
 /// discovers the newest at build time (parsing the `<unix_ms>` in the run id, as
-/// for a matrix run), and the same `results/` archive sweep preserves it. The
-/// committed-static-file model it replaces let a stale (e.g. laptop-vantage) probe
-/// run reach the published site as a fallback.
+/// for a matrix run), and the same `results/` archive sweep preserves it. A
+/// committed static file would let a stale (e.g. laptop-vantage) probe run reach
+/// the published site as a fallback.
 pub(super) fn probe_out_path(explicit: &Option<PathBuf>, kind: &str, run_id: &str) -> PathBuf {
     match explicit {
         Some(p) => p.clone(),

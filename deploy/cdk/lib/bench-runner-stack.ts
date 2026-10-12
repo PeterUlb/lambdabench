@@ -24,7 +24,7 @@ export interface BenchRunnerStackProps extends cdk.StackProps {
   readonly archiveBucket: s3.IBucket;
   /** Distribution the publish step invalidates (from SiteStack). */
   readonly distribution: cloudfront.IDistribution;
-  /** Apex domain, injected as LAMBDABENCH_SITE_DOMAIN so the site build bakes the
+  /** Apex domain, injected as LAMBDABENCH_SITE_DOMAIN so the site build writes the
    * real canonical URLs. */
   readonly siteDomain: string;
   /** Public source-repo URL, injected as LAMBDABENCH_REPO_URL so the site build links
@@ -59,7 +59,7 @@ export class BenchRunnerStack extends cdk.Stack {
     const taskDef = new ecs.FargateTaskDefinition(this, "RunnerTaskDef", {
       // Fargate task size is fixed for the task's whole life, so it is chosen for
       // the dominant phase: the run is network-bound on serial-per-cell Lambda
-      // invokes and leaves the CPU mostly idle, so extra vCPUs buy nothing there.
+      // invokes and leaves the CPU mostly idle, so extra vCPUs do not help there.
       // The build is the only CPU phase and is largely sequential per artifact;
       // 2 vCPU is plenty. Memory stays at 8 GB as headroom for the memory-hungry
       // build steps (Rust fat-LTO links, the gradle/JVM daemon), not the run.
@@ -86,9 +86,9 @@ export class BenchRunnerStack extends cdk.Stack {
     // ARN before CreateFunction, and bencher runs standalone without CDK), so it
     // holds iam:CreateRole/AttachRolePolicy/PutRolePolicy on role/lambdabench-*.
     // Left unbounded that is a privilege-escalation path: create a lambdabench-*
-    // role, attach AdministratorAccess, pass it to a Lambda. This managed policy is
-    // the hard ceiling on what any role the runner creates can do: exactly the
-    // services the benchmark's execution role uses (see bencher/src/aws/iam.rs).
+    // role, attach AdministratorAccess, pass it to a Lambda. This managed policy
+    // caps what any role the runner creates can do: exactly the services the
+    // benchmark's execution role uses (see bencher/src/aws/iam.rs).
     // A bounded role's effective permissions are the intersection of its policies
     // and this boundary, so a broader attached policy grants nothing beyond it. The
     // ARN is required as the boundary on every CreateRole (condition below) and
@@ -126,8 +126,8 @@ export class BenchRunnerStack extends cdk.Stack {
         }),
       ],
     });
-    // Requiring this exact boundary on every privilege-granting IAM call closes
-    // the escalation; reused in the CreateRole/Attach/Put statement below.
+    // Requiring this exact boundary on every privilege-granting IAM call blocks
+    // that escalation; reused in the CreateRole/Attach/Put statement below.
     const boundaryCondition = {
       StringEquals: {
         "iam:PermissionsBoundary": execRoleBoundary.managedPolicyArn,
@@ -169,10 +169,10 @@ export class BenchRunnerStack extends cdk.Stack {
     // Privilege-granting actions are gated on the permissions boundary: the
     // condition allows each only when the request sets the boundary to
     // execRoleBoundary, so every role the runner creates or modifies is capped by
-    // that ceiling and cannot be minted or grown beyond what the benchmark needs.
+    // it and cannot be created or extended beyond what the benchmark needs.
     // PutRolePermissionsBoundary is conditioned the same way (it can only set the
     // boundary to execRoleBoundary, never widen it) because bencher::ensure_role
-    // converges a pre-existing boundary-less role onto the ceiling via that call.
+    // uses that call to add the boundary to a pre-existing role that has none.
     taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -187,7 +187,7 @@ export class BenchRunnerStack extends cdk.Stack {
     );
     // Privilege-removing and read-only actions carry no boundary condition: they
     // cannot escalate, and gating teardown's detach/delete on the boundary would
-    // let a boundary change strand roles the runner could no longer clean up.
+    // let a boundary change leave roles the runner could no longer clean up.
     taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -363,7 +363,7 @@ export class BenchRunnerStack extends cdk.Stack {
     // --- Site publish permissions ------------------------------------------
     props.siteBucket.grantReadWrite(taskRole);
     // The runner only writes archives to ArchiveBucket (run-* and
-    // lifecycle-*.json); read access is unnecessary and intentionally withheld.
+    // lifecycle-*.json), so it is not granted read access.
     props.archiveBucket.grantWrite(taskRole);
     taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
@@ -385,9 +385,9 @@ export class BenchRunnerStack extends cdk.Stack {
 
     // CDK Docker asset: `cdk deploy` builds the image and pushes it to the CDK
     // bootstrap assets repo, tagged with a content hash of the build context. The
-    // image carries the repo, so that hash identifies which source the task runs.
+    // image contains the repo, so that hash identifies which source the task runs.
     // `.dockerignore` is honored for both the hash and the
-    // staged context, so build output and caches neither bloat the asset nor churn
+    // staged context, so build output and caches do not enlarge the asset or change
     // the hash. The platform is explicit because the task is X86_64 (above) while
     // the operator's build machine may not be.
     taskDef.addContainer("Runner", {
@@ -409,8 +409,8 @@ export class BenchRunnerStack extends cdk.Stack {
         ARCHIVE_BUCKET: props.archiveBucket.bucketName,
         DISTRIBUTION_ID: props.distribution.distributionId,
         // Read by bencher (aws/iam.rs): the ARN of the managed policy to set as the
-        // permissions boundary on the Lambda execution role it creates, capping it
-        // at the same ceiling the runner's IAM grant is gated on. Standalone bencher
+        // permissions boundary on the Lambda execution role it creates (the same
+        // policy the runner's IAM grants are conditioned on). Standalone bencher
         // runs (no CDK) leave this unset and create the role without a boundary.
         LAMBDABENCH_EXEC_ROLE_BOUNDARY_POLICY_ARN:
           execRoleBoundary.managedPolicyArn,

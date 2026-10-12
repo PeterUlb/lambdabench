@@ -5,7 +5,7 @@
 //! log tail. The tail is consumed live (the REPORT line is parsed out of it, and
 //! it is embedded in error messages on an invariant violation), so its data is
 //! already in the parsed columns; persisting the base64 tail on every one of a
-//! run's millions of rows added ~40% per row for an archive nothing read back.
+//! run's millions of rows would add ~40% per row for an archive nothing reads.
 
 use anyhow::{Context, Result};
 use flate2::Compression;
@@ -27,10 +27,10 @@ pub struct InvocationRow {
     pub scenario: String,
     pub memory_mb: i32,
     pub arch: String,
-    /// Rust optimization level ("o3" / "oz"); null for Node and Java.
+    /// Rust optimization level ("o3" / "oz"); null for non-Rust runtimes.
     pub opt: Option<String>,
     /// Java-only SnapStart dimension: true if the function had SnapStart enabled
-    /// (measured via published versions). Always false for Rust and Node.
+    /// (measured via published versions). Always false for non-Java runtimes.
     pub snapstart: bool,
     /// Rust-only `aws-lc-rs` jitter-entropy build dimension ("on" / "off"); null
     /// for non-Rust runtimes. The standing matrix is "off" (build flag disables
@@ -132,8 +132,8 @@ impl ResultsWriter {
             .collect::<std::result::Result<_, _>>()
             .context("serializing invocation row")?;
         // Recover a poisoned lock rather than propagate the panic: already-written
-        // bytes are valid JSONL (rows are line-atomic), and every later cell's rows
-        // are recoverable data not to discard at the end of a multi-hour run.
+        // bytes are valid JSONL (rows are line-atomic), and dropping every later
+        // cell's rows would throw away the rest of a multi-hour run.
         // Matches the poison recovery in run.rs.
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         for line in &lines {
@@ -326,8 +326,7 @@ mod tests {
 
     /// Simulates a crash: rows are flushed per cell but the encoder is never
     /// cleanly finished (no gzip footer). The flushed rows must still be
-    /// recoverable from the truncated stream, the durability guarantee per-cell
-    /// flushing provides.
+    /// recoverable from the truncated stream; per-cell flushing guarantees this.
     #[test]
     fn flushed_rows_survive_a_missing_footer() {
         let dir =

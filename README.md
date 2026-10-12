@@ -165,8 +165,8 @@ row: each initializes its own way and the costs do not add up.
 **Group 2, CPU probes, read on warm latency.** These four ask one question (*how much does language
 choice matter for CPU-bound work?*), and the answer depends entirely on **where the CPU time goes**: your
 own code, a shared native library, a standard-library parser, or the garbage collector. Each isolates
-one of those. The deep mechanics (the JSON-parser spread, the retained-heap GC tail, and the "read the
-tail in absolute ms, not the P99/P50 ratio" caveat) live in the [Findings](#findings) below.
+one of those. The details (the JSON-parser spread, the retained-heap GC tail, and the "read the
+tail in absolute ms, not the P99/P50 ratio" caveat) are in the [Findings](#findings) below.
 
 | # | Name          | What it isolates                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 |---|---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -187,11 +187,11 @@ ASCII-only counting, symmetric native crypto, and the SHA-trap that motivated th
 - **Architectures:** arm64, x86_64
 - **Optimization (Rust only):** `opt-level=3` (speed) vs `opt-level=z` (size). Which cold-starts faster is scenario-dependent, so both are measured. One caveat: the smaller artifact's faster-download advantage lands in the download-and-unpack phase, which no REPORT metric isolates (see the timings note under [How it works](#how-it-works)). So this A/B captures the *loaded-code* trade-off (init link/load + warm execution speed), not total cold start including download. Node, Java, Python, and Go have no equivalent knob.
 
-  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as actually-loaded code, never as inert bytes. So the matrix never pads an artifact with dead filler to "isolate size" (the probe section above and DESIGN.md point here for that rule). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle.html): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows.
+  This A/B, plus the handler-shape scenarios (which grow the artifact with *real* linked/loaded code: framework, SDK clients), is how the matrix studies artifact size: as code that is actually loaded. The matrix never pads an artifact with dead filler to "isolate size" (the probe section above and DESIGN.md point here for that rule). A *loaded-code* cold start (init + first request) is about code being brought up, linked, loaded, and initialized. Filler is downloaded and unpacked but never brought up, so padding a matrix artifact would measure the wrong phase. Inert filler is right in exactly one place, the [Cold Start Anatomy download-scaling probe](https://lambdabench.dev/lifecycle.html): that probe subtracts init and the first request away, leaving only the download + environment-start term, which is exactly what filler grows.
 - **`aws-lc-rs` jitter-entropy A/B (Rust only, scoped):** every Rust binary in the matrix is built with `AWS_LC_SYS_NO_JITTER_ENTROPY=1`, which drops the AWS-LC CPU-jitter entropy source to recover its cold-start latency cost (a latency/security trade-off, not a universal win). A second variant with the seeding *enabled* is built only for `oneclient` and `lettercount` × o3 × both arches × all memory tiers, because those two scenarios place the same one-time cost in *opposing* Lambda lifecycle phases (the cliff in the Invoke phase vs the flat bump in the Init phase); other scenarios would just repeat one of them. The full mechanism, the trade-off, and the SnapStart parallel are in the [jitter-entropy Finding](#finding-the-aws-lc-jitter-entropy-cold-start-tax-same-cost-two-outcomes) below.
-- **SnapStart (Java):** plain JVM vs SnapStart, treated as two **separate runtimes**. The dashboard shows `Java` and `Java SnapStart` as distinct series alongside the other runtimes, not as a Java sub-variant, because SnapStart is a fundamentally different execution model, not a tuning knob: it restores a pre-initialized snapshot instead of running the JVM init on every cold start, replacing `Init Duration` with a `Restore Duration` (usually much smaller on a heavy handler, but not always on a light one). The SnapStart variant is **primed**: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, so the AWS SDK's lazy class loading / marshaller construction / JIT is baked into the snapshot. That is the realistic config an operator who enables SnapStart would ship (see the priming finding under Findings).
+- **SnapStart (Java):** plain JVM vs SnapStart, treated as two **separate runtimes**. The dashboard shows `Java` and `Java SnapStart` as distinct series alongside the other runtimes, not as a Java sub-variant, because SnapStart is a different execution model: it restores a pre-initialized snapshot instead of running the JVM init on every cold start, replacing `Init Duration` with a `Restore Duration` (usually much smaller on a heavy handler, but not always on a light one). The SnapStart variant is **primed**: a CRaC `beforeCheckpoint` hook runs one representative invocation during init, so the AWS SDK's lazy class loading / marshaller construction / JIT is baked into the snapshot. That is the realistic config an operator who enables SnapStart would ship (see the priming finding under Findings).
 
-  SnapStart sweeps the **same** memory range as every other series (a full peer, not a reduced sub-sweep), except where a per-variant floor drops a tier the runtime cannot survive. SnapStart raises the `batch` and `smithyfull` floors above plain Java's; `lettercount`'s ≥512 MB floor applies to both plain and SnapStart Java, so it narrows the range identically for each (see the function-count bullet below). Only its per-cell cold-cycle count is capped at 10 (`config.rs::SNAPSTART_COLD_CYCLES`), because each cold sample publishes a fresh function version and the snapshot is created at publish time (~10-30 s). The cap only ever *reduces* a count: the light scenarios drop from 50 to 10 and `batch` from 15 to 10, but the CPU probes (`lettercount`, `authz`, `cache`) whose base cold count is already 5 stay at 5.
+  SnapStart sweeps the **same** memory range as every other series, except where a per-variant floor drops a tier the runtime cannot survive. SnapStart raises the `batch` and `smithyfull` floors above plain Java's; `lettercount`'s ≥512 MB floor applies to both plain and SnapStart Java, so it narrows the range identically for each (see the function-count bullet below). Only its per-cell cold-cycle count is capped at 10 (`config.rs::SNAPSTART_COLD_CYCLES`), because each cold sample publishes a fresh function version and the snapshot is created at publish time (~10-30 s). The cap only ever *reduces* a count: the light scenarios drop from 50 to 10 and `batch` from 15 to 10, but the CPU probes (`lettercount`, `authz`, `cache`) whose base cold count is already 5 stay at 5.
 - **Python / Go scenarios:** Python and Go each host every scenario **except** the two Smithy ones (`smithy`, `smithyfull`). [smithy-python](https://github.com/smithy-lang/smithy-python) is client/types codegen only, with no **server** SDK. [smithy-go](https://github.com/aws/smithy-go) *does* ship a `go-server-codegen` plugin, but it is explicitly a work-in-progress, is not published to Maven Central (you must build it to mavenLocal yourself), generates **only** the `awsJson1_0` protocol (the shared `CoffeeShop` model is `restJson1`, so a Go server would do different (de)serialization work than the Rust/Node/Java servers and break the same-task fairness rule), and provides no Lambda adapter. So neither has a fair way to host the Smithy server; those cells are never generated. Like Node, Python and Go have no opt-level or SnapStart dimension (one plain runtime per cell); Go, like Rust, compiles to a per-arch native binary.
 - **= 674 Lambda functions**: Rust 228 (9 scenarios × both opt-levels × tiers × 2 arch, **plus 24 jitter=On diagnostic cells** on `oneclient`/`lettercount` × o3 × tiers × 2 arch), Node 102, Java two runtimes (plain 96 and SnapStart 92), Python 78, and Go 78. The counts are lower than a flat scenario×tier×arch product because the memory floors are language- and variant-aware (`config.rs::Scenario::min_memory_mb`), and unrunnable cells below a floor are dropped, not recorded as failures:
   - `batch` needs ≥512 MB on plain Java and ≥1024 MB on SnapStart (the JVM, and the restored snapshot on top of it, OOM the smaller tiers), and ≥256 MB on Rust/Node/Python/Go.
@@ -231,12 +231,12 @@ appear nowhere else.
 SnapStart snapshots the JVM *after* init but cannot capture work that only happens on the first
 *invocation* (the AWS SDK v2's lazy class loading, JIT, TLS, credential resolution) unless you force it
 to run *before* the checkpoint. The benchmark's SnapStart variant is therefore **primed** wherever an
-operator realistically can, the config a competent operator would ship. The durable shape on SDK-heavy
+operator realistically can prime it, which is the config a competent operator would ship. The durable shape on SDK-heavy
 `threeclient`: `primed < plain < unprimed`, so **unprimed SnapStart is slower than no SnapStart at all**.
-But priming is not what decides whether SnapStart *wins*: **the size of the handler is.** Restore is
+Whether SnapStart *wins* depends on **the size of the handler**, not on priming. Restore is
 itself work, so SnapStart only wins where the init + first-call cost it skips exceeds that restore cost:
 it wins on the SDK-heavy and heavy-init handlers (`oneclient`, `threeclient`, `batch`, and even *unprimed*
-`lettercount`, the clean proof it is init size, not priming) and loses at every tier on the thin ones
+`lettercount`, which shows that init size, not priming, decides it) and loses at every tier on the thin ones
 (`hello`, `authz`, `cache`), where fully-primed `authz` still trails plain Java.
 
 Full mechanism, the primed/not-primed split, and live magnitudes on
@@ -263,7 +263,7 @@ package-private), so an operator can prime the operation and (for `smithyfull`) 
 **not the framework marshalling**. That unprimable residue is a *second* penalty on top of restore
 overhead, so both Smithy scenarios trail plain Java net, unlike the SDK-only `threeclient` where priming
 reaches everything and SnapStart wins. This is a property of the smithy-java
-API surface used in this run (1.4.0), not of SnapStart; a future warmup hook would close it.
+API surface used in this run (1.4.0), not of SnapStart; a future warmup hook would remove it.
 Faking it by reaching into package-private internals is rejected as a methodology bug (DESIGN.md
 Measurement-purity invariant #10). Full write-up and magnitudes on
 **[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)**.
@@ -281,7 +281,7 @@ longer independent, see the [Rust page](https://lambdabench.dev/rust.html) for t
 the Lambda cold-start mitigation, framed as a per-workload trade-off (see the
 [smithy-rs announcement](https://github.com/smithy-lang/smithy-rs/discussions/4541)).
 
-The interesting shape: the *same* cost lands in radically different places depending on which Lambda
+The *same* cost lands in very different places depending on which Lambda
 lifecycle phase does the first handshake, because Init runs on boosted (near-full-vCPU) CPU while Invoke
 runs on the tier's fractional allocation. `oneclient` does it in the Invoke phase (a **cliff** in
 `duration_ms` that steepens as memory shrinks); `lettercount` does it in the Init phase (a **flat bump**
@@ -289,12 +289,12 @@ in `init_ms`, paid cheaply today). AWS-LC also auto-opts-out inside a snapshot r
 (`is_vm_ube_environment()`), so this never fires for SnapStart. The benchmark sets the flag matrix-wide
 and keeps a scoped jitter=On A/B on `oneclient`/`lettercount` × o3 to quantify it. Full mechanism, the
 Init-phase-boost caveat, and both chart panels on **[lambdabench.dev/rust](https://lambdabench.dev/rust.html)**;
-the lifecycle-phase story is on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)**.
+the lifecycle-phase explanation is on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)**.
 
 The build-side mechanics (where the flag is set, and why the two variants must not share a
 `CARGO_TARGET_DIR`) are in DESIGN.md Fairness invariant #4.
 
-### Finding: a crash or timeout re-runs Init on the next invocation, and on SnapStart that means a full init, not a restore
+### Finding: a crash or timeout re-runs Init on the next invocation (on SnapStart, a full init)
 
 A cold start is not the only way to pay init. An invocation that **ends the runtime process** forces
 the next invocation to re-run the whole Init phase, a *suppressed init* whose duration AWS folds into
@@ -302,9 +302,9 @@ that next invocation's reported `Duration`, so it reads as one slow invoke with 
 The trigger is not "the invocation failed", it is whether the process survives: tested across all five
 runtimes, an **OOM**, a **timeout**, and a **process exit** re-init on every one, while an **ordinary
 handler exception / returned error** stays warm on every one (the mapping diverges at the edges, e.g. a
-Go `panic` re-inits while a Rust `panic` stays warm). The sharper edge is on **SnapStart**: the
+Go `panic` re-inits while a Rust `panic` stays warm). On **SnapStart** it costs more: the
 recovery after such a failure runs a **full from-scratch JVM init, not a snapshot restore**, so it
-abandons the fast path outright, on the runtime where init is most expensive. Full
+loses the fast path on the runtime where init is most expensive. Full
 write-up, the per-runtime mapping, and the verification on
 **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)** (general) and
 **[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)** (the SnapStart recovery
@@ -331,8 +331,8 @@ The matrix is zip-only, but the download-scaling probe (`probe download-scaling 
 the same residual instrument over padded container images, and the two packagings are a clean
 inversion. A `.zip` is downloaded and unpacked in full before the microVM does anything, so its size
 cost lands in the **unreported pre-init residual**: a flat provisioning floor up to a few MB, then a
-near-linear climb reaching of order a second near Lambda's size limit, latency no `Init Duration`,
-`REPORT` field, or CloudWatch function metric ever shows. A container image is chunked, cached, and
+near-linear climb reaching of order a second near Lambda's size limit. No `Init Duration`,
+`REPORT` field, or CloudWatch function metric shows that latency. A container image is chunked, cached, and
 **demand-loaded lazily at block level** (the mechanism AWS documents in Brooker et al.,
 [*On-demand Container Loading in AWS Lambda*](https://arxiv.org/abs/2305.13162)), so its pre-init
 residual stays flat at every size and the size cost surfaces in the **reported** `Init Duration`
@@ -361,14 +361,14 @@ microbenchmark on the same ~16 MB / 573k-record batch pins it down:
 > | Go (`encoding/json` → struct) | ~207 ms | ~7 ms    |
 
 The parse is the entire gap; Go's group-by is actually *faster* than Rust's (which clones the key into
-the map), so the allocator/GC is not the culprit. So `batch`'s median is a serialization-library story
-(`serde`'s monomorphization vs `encoding/json`'s runtime reflection), not a GC story. We keep
+the map), so the allocator/GC is not the cause. `batch`'s median gap comes from the serialization
+library (`serde`'s monomorphization vs `encoding/json`'s runtime reflection), not from GC. We keep
 `encoding/json` because it is Go's idiomatic parser; swapping in `goccy/go-json` or `sonic` would compare
 libraries, not languages (the SHA trap; see the [Fairness note](#fairness-note)). `batch` *does* surface
 a modest GC tail (read it in absolute P99.9 − median, not the ratio); the full tail discussion and charts
 are on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
-### Finding: the GC P99 tax is real, but it needs a *retained* heap, which is why `cache` exists
+### Finding: a GC P99 tail needs a *retained* heap, which is why `cache` exists
 
 The popular "we rewrote our Go hot path in Rust for 5× better P99" stories pin the win on GC stalling the
 tail. That effect is real, but it needs two things `batch` lacks: a **large, retained** live set (tracing
@@ -377,8 +377,8 @@ hide on a spare core). `batch`'s graph is transient and freed each invoke, so it
 is why **`cache`** exists: a ~100 MB live set held across warm invokes and churned each invoke, forcing a
 tracing GC to re-trace the whole set every cycle. On the GC'd runtimes the warm tail then separates from
 the P50 at the fractional-vCPU tiers and eases as vCPU grows; there is also a median axis (boxed
-representations sit higher). Note this is a *single-request* GC tax: Lambda runs one request per sandbox,
-so the concurrency-amplified stop-the-world of the high-RPS articles is structurally out of reach here.
+representations sit higher). This is a *single-request* GC tax: Lambda runs one request per sandbox,
+so the concurrency-amplified stop-the-world of the high-RPS articles cannot occur here.
 The tail-vs-median charts and the read-in-absolute-ms rule are on
 **[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.
 
@@ -399,13 +399,13 @@ The tail-vs-median charts and the read-in-absolute-ms rule are on
    runtime, one per-arch binary, like Rust, with the AWS SDK for Go v2 linked in. The strip matches
    Rust's `strip` and Node's minification, so every artifact is measured as loadable code rather than
    carrying debug bytes only some languages would ship.
-2. **Cold starts are forced**, not left to chance. For plain functions (Rust, Node, plain Java, Python, Go), each cycle
+2. **Cold starts are forced.** For plain functions (Rust, Node, plain Java, Python, Go), each cycle
    bumps a `COLD_NONCE` environment variable via `UpdateFunctionConfiguration`, which creates a fresh
    execution environment; the driver waits for *that specific update* to land before invoking: it
    polls until the function's `RevisionId` has changed from its pre-update value **and**
    `LastUpdateStatus` is `Successful` (waiting on `Successful` alone can return on a *stale* status
-   and hit the still-warm prior sandbox; [RUNBOOK.md](RUNBOOK.md)'s failure-mode table has the full
-   story). **SnapStart** works differently: it applies only to
+   and hit the still-warm prior sandbox; [RUNBOOK.md](RUNBOOK.md)'s failure-mode table has the
+   details). **SnapStart** works differently: it applies only to
    published versions, so each cycle bumps `COLD_NONCE`, publishes a fresh function version (whose
    snapshot has never been restored), waits for that version to reach `Active`, then invokes that
    version qualifier: a guaranteed cold restore with no warm-retry loop. The version is deleted after
@@ -413,7 +413,7 @@ The tail-vs-median charts and the read-in-absolute-ms rule are on
 3. **Timings come from the real platform.** Every invoke uses `LogType=Tail`; the `REPORT` line is
    parsed for `Init Duration` (plain cold only) or `Restore Duration` (SnapStart cold only),
    `Duration`, `Billed Duration`, `Memory Size`, and `Max Memory Used`. Either an `Init Duration` or a
-   `Restore Duration` marks a cold start. Note `Init Duration` is measured *after* the package is
+   `Restore Duration` marks a cold start. `Init Duration` is measured *after* the package is
    downloaded and unpacked, so it captures runtime + handler init (module load, client construction), not
    the code-download time; no metric here isolates the download-and-unpack phase.
 4. **Fail loud, never fall back.** The run errors out if a cold invoke has neither `Init Duration` nor
@@ -478,7 +478,7 @@ these deletes check ownership first: `DeleteFunction`, `DeleteTable`, `DeleteBuc
 act on whatever resource holds that name, lambdabench's or not. In practice that's a low-probability
 collision, since a matrix function name is a full descriptor (e.g.
 `lambdabench-rust-hello-arm64-o3-1024`: language + scenario + arch + opt/snap/jitter + memory) unlikely
-to already exist by chance. The KMS orphan sweep is the one exception worth calling out separately: it
+to already exist by chance. The KMS orphan sweep is the exception: it
 doesn't get handed a name at all, but lists every KMS key in the account/region and schedules deletion
 for any carrying the tag `lambdabench-managed-kms-key=true` (needed because that key can lose its
 alias, its only other handle, to a prior failed run), so it can in principle reach a key that merely

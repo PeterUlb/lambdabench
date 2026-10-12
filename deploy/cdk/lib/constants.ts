@@ -35,9 +35,9 @@ export const RESOURCE_WILDCARD = "lambdabench-*";
  * Unlike every other resource here, the orphan sweep this scopes finds
  * candidates by scanning every KMS key in the account/region, not by an exact
  * name, so this tag is the only thing distinguishing a lambdabench-owned key
- * from someone else's in a shared account. Deliberately a specific, namespaced
- * phrase rather than the bare `RESOURCE_PREFIX` word, which a coincidental
- * unrelated tag could realistically match.
+ * from someone else's in a shared account. It is a specific, namespaced key
+ * instead of the bare `RESOURCE_PREFIX` word, which an unrelated tag could
+ * plausibly match.
  */
 export const KMS_TAG_KEY = "lambdabench-managed-kms-key";
 export const KMS_TAG_VALUE = "true";

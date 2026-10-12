@@ -3,13 +3,14 @@
 (site/src/lifecycle.md) against the freshly-produced probe data.
 
 Almost every number on the site is rendered from stats.json (self-updating) or,
-in the README "Finding" sections, framed as a dated one-off (so it does not
-silently rot). lifecycle.md derives its exact ms from the probe JSONs at build
+in the README "Finding" sections, framed as a dated one-off (so it is not read
+as current after it goes stale). lifecycle.md derives its exact ms from the probe JSONs at build
 time, but it still asserts *qualitative* claims about the off-matrix probes (the
 download+start table and the download-scaling / zip-vs-image charts) in prose, so
-a Lambda-platform change could quietly falsify those shape claims.
+a Lambda-platform change could make those shape claims false without anyone
+noticing.
 
-This script asserts the KEY prose claims still hold against the three
+This script asserts the key prose claims still hold against the three
 probe JSONs (download+start, download-scaling, and the zip-vs-container-image
 family). Those outputs are NOT committed: like the matrix run they are written
 run-scoped into the repo-root results/ dir (lifecycle-<kind>-<run_id>.json,
@@ -79,7 +80,7 @@ start = load("download-start")
 scaling = load("download-scaling")
 # The container-image family is refreshed by the publish pipeline (crane is
 # daemonless, so it runs on Fargate like the zip families), so its output is a
-# first-class input to this check, same as the two above.
+# required input to this check, same as the two above.
 image = load("download-scaling-image")
 scells = start["cells"]
 ssamp = scaling["samples"]
@@ -89,11 +90,11 @@ isamp = image["samples"]
 def require(name, ok, detail):
     """Fail loud if a data point the claims below rely on is absent.
 
-    Every claim is otherwise gated by an `if <point> present` guard, so a
+    Most claims are otherwise gated by an `if <point> present` guard, so a
     truncated or empty probe JSON would make the claim silently skip and the
-    script still print "all hold" and exit 0, defeating the guard's purpose.
+    script still print "all hold" and exit 0.
     This asserts the expected shape up front so a partial run is caught as a
-    hard failure, not a vacuous pass."""
+    hard failure instead of a pass that checked nothing."""
     if not ok:
         failures.append(f"{name}: missing expected probe data ({detail}); the guard "
                         f"cannot check its claims. Re-run the probe or inspect the JSON.")
@@ -127,9 +128,9 @@ require("start rust/hello 128MB cell",
             for c in scells),
         "no 128 MB rust/hello cell in the download-start probe (the tier lifecycle.md renders)")
 # lifecycle.md renders the > 13 MB @ 512 MB cells inline (its `dlBig` selector, the
-# "large bundle lift" bullet). With none present the page shows `NaN-NaN MB` while
-# Claim 2 below silently skips (its `if big:` guard), so assert the cell up front,
-# exactly as for the rust/hello 128 MB tier above.
+# "large bundle lift" bullet). With none present the page shows `NaN-NaN MB` and
+# Claim 2 below, which has no presence guard, has no large cells to compare, so
+# assert the cell up front, exactly as for the rust/hello 128 MB tier above.
 require("start big-artifact 512MB cell",
         any(c["zip_bytes"] > 13e6 and c["memory_mb"] == 512 for c in scells),
         "no > 13 MB @ 512 MB cell in the download-start probe (the cell lifecycle.md renders)")
@@ -156,7 +157,7 @@ if failures:
 # --- Claim 1: the ~110 ms-scale provisioning floor (read off the hello cells). ---
 # lifecycle.md derives the floor it prints ("a flat floor of ~<floor> ms up to a
 # few MB") from these same hello cells at build time, so the printed number cannot
-# drift; what this guards is the REGIME the surrounding narrative assumes (a
+# drift; what this guards is the REGIME the surrounding prose assumes (a
 # roughly-100 ms flat floor that download is "lost in").
 hello = [c["residual_p50"] for c in scells if c["scenario"] == "hello"]
 floor = statistics.median(hello) if hello else 0.0
@@ -165,14 +166,14 @@ check(
     90 <= floor <= 140,
     f"median hello residual = {floor:.0f} ms (expect 90-140)",
     "'a flat floor of ~<floor> ms up to a few MB' (floor derived at build time; "
-    "the narrative assumes a ~100 ms regime)",
+    "the prose assumes a ~100 ms regime)",
 )
 
 # --- Claim 2: large matrix artifacts sit a lift above the floor. ---
 # lifecycle.md renders the lift from data: "the ~14-17 MB Java/Python bundles
 # sit ~<lo>-<hi> ms above the floor" (dlBigLift). This guards that the largest
 # matrix bundle clears the floor by a visible margin, so the "download term only
-# becomes visible once the artifact is genuinely large" claim holds.
+# becomes visible once the artifact is large" claim holds.
 # The `require` above guarantees at least one such cell, so this runs unconditionally.
 #
 # Tested as a separation between two GROUPS of cells, not as one cell's p50
@@ -310,14 +311,14 @@ if ratios:
         "'the dashed residual climbs by roughly an order of magnitude'",
     )
 
-# --- Claim 6c: the rust/hello wall-clock narrative (the argument that download is
+# --- Claim 6c: the rust/hello wall-clock argument (that download is
 # NOT in Init Duration). lifecycle.md derives the three ms it prints from this same
 # cell ("reports an Init Duration of ~<init>, about what an empty main plus runtime
 # start should cost, yet the caller's wall-clock ... is ~<wall> with the network
 # path subtracted out ... leaves a residual (~<resid> here ...)"), so the printed
 # numbers cannot drift. These come from the download-START probe (start["cells"]),
-# not the scaling probe. What this guards is the REGIME the narrative assumes:
-# a low-double-digit-ms init dwarfed by a ~100 ms-scale wall-clock and residual.
+# not the scaling probe. What this guards is the REGIME the prose assumes:
+# a low-double-digit-ms init far below a ~100 ms-scale wall-clock and residual.
 rh = [c for c in scells if c["lang"] == "rust" and c["scenario"] == "hello"]
 if rh:
     # Guard the 128 MB cell: it is the exact one lifecycle.md renders inline
@@ -351,11 +352,11 @@ if rh:
         "Duration nor the invoke Duration' (derived at build time)",
     )
 
-# --- Claim 6d: the caller-wait formula ("What a caller actually waits through"). ---
+# --- Claim 6d: the caller-wait formula ("What a caller waits for end to end"). ---
 # The formula needs the caller-wait fields (w_warm_p50 + the W_cold/W_warm
 # min-max spreads); a probe JSON lacking them comes from an outdated probe
-# binary, and the site's data loader refuses to build from it (stale data gets
-# the missing-data posture), so their absence is flagged here too, earlier and
+# binary, and the site's data loader refuses to build from it (it treats stale
+# data like missing data), so their absence is flagged here too, earlier and
 # with the same re-run pointer, rather than surfacing only as a build failure.
 # When present, guard the vantage-independent
 # shape the prose asserts: a warm wall-clock exceeds its own net RTT by a few ms
@@ -369,7 +370,7 @@ check(
     "all cells carry w_warm_p50 + W_cold/W_warm min-max"
     if have_wait
     else "probe JSON predates the caller-wait fields (re-run probe download-start)",
-    "the 'What a caller actually waits through' sanity-check table (the site's data loader "
+    "the 'What a caller waits for end to end' sanity-check table (the site's data loader "
     "refuses to build without them)",
 )
 if have_wait and rh:
@@ -434,7 +435,7 @@ for s in isamp:
 
 # Claim 7: image-touched init GROWS with size (the size cost lands in the
 # reported Init Duration). lifecycle.md: "its solid init is the line that
-# climbs ... for the variant that actually loads the code at init".
+# climbs, but only for the variant that reads the added padding at init".
 ti = img_init.get("image-touched", {})
 if 10 in ti and 200 in ti:
     grew = ti[200] - ti[10]
@@ -482,7 +483,7 @@ if 10 in ui and 200 in ui:
 # source the prose table and the chart use), NOT the separately-written scaling
 # JSON: the two are distinct probe invocations and can diverge. image totals come
 # from the touched variant. lifecycle.md: "the .zip starts lower ... but the image
-# pulls ahead as size grows".
+# is lower as size grows".
 zip_total = {}
 for s in image.get("zip_baseline", []):
     zip_total[s["size_mb"]] = s["init_p50"] + s["residual_p50"]
@@ -498,23 +499,23 @@ if small is not None:
         "'the .zip starts lower (it has no base-layer floor)'",
     )
 if large is not None:
-    # "pulls ahead" needs a substantial, not hairline, margin at the large end, but
-    # the exact margin swings run to run (measured ~15-40% lower). Guard image at
-    # least ~15% below zip: passes ordinary noise, trips only if the crossover
-    # margin collapses toward parity (or reverses), which is what would falsify the
-    # prose.
+    # "lower as size grows" needs a substantial, not hairline, margin at the large
+    # end, but the exact margin swings run to run (measured ~15-40% lower). Guard
+    # image at least ~15% below zip: passes ordinary noise, trips only if the
+    # crossover margin collapses toward parity (or reverses), which is what would
+    # make the prose wrong.
     check(
         "total overhead: image lower when large",
         img_total[large] < zip_total[large] * 0.85,
         f"{large}MB zip={zip_total[large]:.0f} vs image={img_total[large]:.0f} ms (drift if image not < 85% of zip)",
-        "'the image pulls ahead as size grows'",
+        "'the image is lower as size grows'",
     )
 
 print("Cold Start Anatomy prose-vs-data check:")
 print("\n".join(notes))
 if failures:
     print(
-        "\nDRIFT: the committed probe data no longer matches lifecycle.md's prose. "
+        "\nDRIFT: the newest probe data in results/ no longer matches lifecycle.md's prose. "
         "Update the prose (or re-verify the run):",
         file=sys.stderr,
     )

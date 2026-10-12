@@ -77,11 +77,11 @@ export const SHORT_SCENARIO = {
 // reference block. Sourced from the handler doc-comments / DESIGN.md.
 //
 // `does` = the mechanics (verifiable from the handler). `why` = what the
-// scenario surfaces, phrased as the question it puts to the data, not the
-// answer. The blurbs avoid naming a winner (the chart shows that), singling out
-// one runtime where several share a trait, and "isolates X" / "what X adds over
-// Y" framing, since these scenarios read by direct comparison, not subtraction
-// (their costs do not cleanly add up; see DESIGN.md / README).
+// scenario measures, phrased as a question, not the answer. The blurbs avoid
+// naming a winner (the chart shows that), singling out one runtime where
+// several share a trait, and "isolates X" / "what X adds over Y" framing, since
+// these scenarios are meant to be compared directly, not subtracted from each
+// other (their costs do not cleanly add up; see DESIGN.md / README).
 //
 // PLAIN TEXT ONLY: interpolated into an html`` template (see index.md), which
 // escapes into a text node, so backticks and tags render literally, not as

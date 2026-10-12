@@ -43,7 +43,7 @@ impl Aws {
     /// invoke's permissions have settled by then; an `AccessDenied` on the first
     /// invoke of a freshly created role is inline-policy propagation lag, not a
     /// misconfiguration. The cell-retry (3 attempts, ~15 s backoff) may absorb a
-    /// short lag but is not guaranteed to cover a deep one: a freshly created role
+    /// short lag but is not guaranteed to cover a longer one: a freshly created role
     /// invoked immediately can still exhaust the retries and abort. If this becomes
     /// a real problem, probe inline-policy readiness here before returning rather
     /// than widening the cell-retry budget.

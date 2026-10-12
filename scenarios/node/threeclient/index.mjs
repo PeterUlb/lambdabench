@@ -17,7 +17,7 @@ const OBJECT_KEY = process.env.LAMBDABENCH_OBJECT_KEY;
 
 // Init phase: build all three clients once. maxAttempts:1 disables SDK retries
 // so a throttle/transient surfaces as a hard failure, not a silently-retried
-// inflated Duration. A failed run beats wrong data.
+// inflated Duration.
 const ddb = new DynamoDBClient({ maxAttempts: 1 });
 const kms = new KMSClient({ maxAttempts: 1 });
 const s3 = new S3Client({ maxAttempts: 1 });

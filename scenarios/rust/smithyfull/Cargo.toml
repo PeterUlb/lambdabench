@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
-# Scenario "smithyfull": the realistic shape, a Smithy server framework hosting a
-# handler that does real AWS work (DDB GetItem + KMS Encrypt + S3 GetObject).
-# Tests whether cold cost is additive: smithyfull ~= hello + (smithy framework)
-# + (three_client work). Reuses the SSDK generated under the sibling `smithy`
+# Scenario "smithyfull": the realistic case, a Smithy server framework hosting a
+# handler that does a real AWS write flow (KMS Encrypt + DDB PutItem + S3
+# PutObject). Read by direct comparison with the other scenarios, not by
+# subtracting them: the per-layer cold costs do not add up (see
+# bencher/src/config.rs). Reuses the SSDK generated under the sibling `smithy`
 # project (../smithy/server/build/...), so no separate codegen is needed.
 
 [[bin]]

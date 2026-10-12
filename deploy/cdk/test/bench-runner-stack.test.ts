@@ -4,12 +4,12 @@ import { EdgeStack } from "../lib/edge-stack";
 import { SiteStack } from "../lib/site-stack";
 import { BenchRunnerStack } from "../lib/bench-runner-stack";
 
-// Locks the IAM posture of the benchmark runner. The runner must create the
+// Checks the IAM permissions of the benchmark runner. The runner must create the
 // Lambda execution role at run time and therefore holds privilege-granting IAM
 // actions (CreateRole / AttachRolePolicy / PutRolePolicy) on role/lambdabench-*.
 // Left ungated that is a privilege-escalation path (create a role, attach
 // AdministratorAccess, pass it to a Lambda). These tests pin the two properties
-// that close it: a permissions-boundary ceiling exists, and every
+// that block it: a permissions-boundary policy exists, and every
 // privilege-granting action is conditioned on it. A regression that dropped the
 // condition or widened the boundary would be silent in a `cdk deploy`.
 describe("BenchRunnerStack IAM posture", () => {
@@ -96,7 +96,8 @@ describe("BenchRunnerStack IAM posture", () => {
   test("privilege-granting IAM actions are gated on the permissions boundary", () => {
     // CreateRole / AttachRolePolicy / PutRolePolicy / PutRolePermissionsBoundary
     // must carry the iam:PermissionsBoundary condition; without it the runner
-    // could create (or grow, or re-boundary) an unbounded role.
+    // could create an unbounded role, add permissions to one, or change a role's
+    // boundary.
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {
         Statement: Match.arrayWith([

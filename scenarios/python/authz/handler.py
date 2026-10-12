@@ -8,17 +8,17 @@
 # configured set of claims with type-mapping the way a real authorizer does before
 # handing them to a policy engine.
 #
-# The fairness split: RSA verification runs in a native crypto library (PyJWT ->
+# Fairness: RSA verification runs in a native crypto library (PyJWT ->
 # cryptography -> OpenSSL here; WebCrypto/OpenSSL on Node; AWS-LC on Rust; JCA on
 # Java), configured symmetrically across runtimes (see README "Fairness note").
 # But RS256 verify is a cheap public-key op, so native crypto is only a small
 # slice; the surrounding in-language glue (base64url decode, JSON parse of
-# header/payload, claim extraction/type-mapping) dominates and is what spreads the
-# runtimes apart. The warm gap stays moderate and flat across memory tiers (the
+# header/payload, claim extraction/type-mapping) dominates and is where the
+# runtimes differ. The warm gap stays moderate and flat across memory tiers (the
 # native verify is not CPU-starved at 128 MB the way pure in-language work is),
-# placing authz between lettercount (all in-language, wide spread) and a
-# pure-crypto tie. Cold start spreads more strongly, by how lean each runtime is
-# at startup.
+# so authz sits between lettercount (all in-language, wide spread) and a
+# pure-crypto tie. Cold start differs more, depending on how much each runtime
+# loads at startup.
 
 import json
 import os
@@ -104,8 +104,7 @@ def extract_claims(payload):
 
 
 def handler(event, context):
-    # The JWT arrives in the invoke payload as { token: "<jwt>" }, exactly as a
-    # real authorizer receives the token with the request.
+    # The JWT arrives in the invoke payload as { token: "<jwt>" }.
     token = event.get("token") if isinstance(event, dict) else None
     if not isinstance(token, str):
         raise RuntimeError("invoke payload missing string field 'token'")
@@ -116,7 +115,7 @@ def handler(event, context):
     # required, 60 s leeway on exp/nbf, nbf validated when present, aud/iss pinned.
     # PyJWT validates aud/iss only when present, so listing them in `require` makes
     # a token missing iss/aud fail loud, matching the other languages. Pinning
-    # algorithms forbids confusion downgrades.
+    # `algorithms` blocks algorithm-confusion downgrades.
     payload = jwt.decode(
         token,
         _KEY,

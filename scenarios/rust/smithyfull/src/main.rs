@@ -1,4 +1,4 @@
-//! Scenario "smithyfull": the realistic shape, the Smithy server framework
+//! Scenario "smithyfull": the realistic case, the Smithy server framework
 //! hosting a handler that does a real AWS write flow.
 //!
 //! The benchmark invokes `CreateOrder`: the server SDK deserializes and
@@ -7,7 +7,8 @@
 //! serializes a constraint-validated response. This represents a typical
 //! production request handler: framework plus multiple AWS clients plus real
 //! (de)serialization. It is read by direct comparison with the other scenarios,
-//! not by subtracting them (the layers do not cleanly add up; see config.rs).
+//! not by subtracting them (the layers do not cleanly add up; see
+//! bencher/src/config.rs).
 
 use std::sync::Arc;
 
@@ -104,7 +105,7 @@ async fn run_work(
     Ok(())
 }
 
-/// Minimal stubs to satisfy the service contract.
+/// Minimal stub to satisfy the service contract.
 async fn get_order(
     input: input::GetOrderInput,
     _state: Extension<Arc<State>>,
@@ -146,7 +147,7 @@ async fn create_order(
 async fn main() {
     // Init phase: resolve config once, build all three clients into shared state.
     // Retries disabled: a throttle/transient must surface as a hard failure, not
-    // be silently retried into an inflated Duration. A failed run beats wrong data.
+    // be silently retried into an inflated Duration.
     let aws = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .retry_config(aws_config::retry::RetryConfig::disabled())
         .load()

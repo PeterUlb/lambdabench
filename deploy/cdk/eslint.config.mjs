@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     // Mirror .gitignore: never lint compiled output (tsc emits *.js/*.d.ts
-    // alongside the .ts sources). eslint has no visibility into .gitignore.
+    // alongside the .ts sources). eslint does not read .gitignore.
     ignores: [
       "node_modules",
       "cdk.out",

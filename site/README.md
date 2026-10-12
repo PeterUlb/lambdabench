@@ -69,6 +69,8 @@ src/
   rust.md                Rust-only dimensions: the aws-lc-rs jitter-entropy A/B
                          and the opt-level A/B (o3 vs oz)
   java-snapstart.md      plain JVM vs SnapStart A/B; Java-only dimension
+  tuning.md              Cold-start tuning: measured levers and their trade-offs,
+                         linking to the evidence on the other pages
   appendix.md            distribution scatter + full percentile tables
 ```
 
@@ -96,8 +98,8 @@ display(headToHead(v));
 selection is applied. It returns the filtered dimensions (`languages`,
 `scenarios`, `memories`, `architectures`), the filtered `cells`, the restricted
 `color` scale, and a `memX()` axis builder, all mutually consistent. A chart
-never re-derives "what is selected", so it is structurally impossible to filter
-the data but not the axis (or the row order, or the legend). `v.stats` is the
+never re-derives "what is selected", so a chart cannot filter the data but not
+the axis (or the row order, or the legend). `v.stats` is the
 escape hatch for the few charts that need the full dataset (a fixed
 normalization baseline, or the per-language A/B cells that live outside `cells`).
 When adding a chart, take `v` and read from it; do not re-filter `stats`.

@@ -19,7 +19,7 @@
 // pricingplanmanager.amazonaws.com) but has no published SDK/CLI service model yet
 // (verified against boto3 1.43.36; see aws/aws-cdk#37857,
 // hashicorp/terraform-provider-aws#45450), so an AwsCustomResource has nothing to
-// dispatch. Subscribing is a one-time CloudFront-console click (deploy/README.md);
+// call. Subscribing is a one-time CloudFront-console click (deploy/README.md);
 // revisit once a service model ships.
 import * as cdk from "aws-cdk-lib";
 import { SiteStack } from "../lib/site-stack";

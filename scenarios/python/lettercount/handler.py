@@ -30,7 +30,7 @@ BUCKET = os.environ["LAMBDABENCH_BUCKET"]
 OBJECT_KEY = os.environ["LAMBDABENCH_LETTERCOUNT_KEY"]
 
 # total_max_attempts=1 disables SDK retries: a throttle on the init S3 fetch must
-# fail hard rather than inflate init via a silent retry. Failed run beats wrong data.
+# fail hard rather than inflate init via a silent retry.
 _s3 = boto3.client("s3", config=Config(retries={"total_max_attempts": 1}))
 
 # Init phase: fetch the JSON payload from S3 once and hold it in memory.
@@ -38,7 +38,7 @@ _payload = _s3.get_object(Bucket=BUCKET, Key=OBJECT_KEY)["Body"].read().decode("
 
 
 def handler(event, context):
-    # Parse (allocates a fresh object graph, the GC fuel) then count lowercase
+    # Parse (allocates a fresh object graph the GC must reclaim) then count lowercase
     # ASCII letters across all entries into 26 totals (index 0 = 'a' .. 25 = 'z').
     arr = json.loads(_payload)
     totals = [0] * 26

@@ -5,8 +5,7 @@
 // A chart never re-derives "what is selected". `makeView(stats, sel)` applies
 // the selection once and returns the filtered dimensions, cells, color scale,
 // and memory-axis builder, all mutually consistent. Every builder reads from
-// that one object, so it cannot filter the data but not the axis (or row order,
-// or legend).
+// that one object, so the data, axis, row order, and legend always agree.
 
 import * as Plot from "npm:@observablehq/plot";
 
@@ -41,15 +40,14 @@ function selectedSeries(stats, sel) {
 
 // Build the filtered view. Pages compute this once per render (reactive on
 // `sel`) and pass it to every chart/table so all consumers see the same filtered
-// world. `stats` stays on the view as an escape hatch for charts that need the
+// data. `stats` stays on the view as an escape hatch for charts that need the
 // full dataset (a fixed normalization baseline, or the A/B cells outside `cells`).
 //
 // `invalidation` is Framework's per-block disposal promise, threaded through so
 // the ResizeObserver-driven wrappers disconnect when the reactive block re-runs
-// (a filter toggle re-runs makeView and every chart cell, minting fresh
-// wrappers/observers). Without it the old observers keep firing on detached nodes
-// and pin the filtered dataset they close over. Optional so a non-reactive caller
-// (or a test) can omit it.
+// (a filter toggle re-runs makeView and every chart cell, creating fresh
+// wrappers/observers). Without it the old observers stay alive (see
+// observeWidth). Optional so a non-reactive caller (or a test) can omit it.
 export function makeView(stats, sel, invalidation) {
   const series = new Set(selectedSeries(stats, sel));
   const full = colorModel(
@@ -125,8 +123,8 @@ export function makeView(stats, sel, invalidation) {
 // pairing cannot drift between the three wrappers. `onWidth(width)` is called
 // with the content width on each change; when `invalidation` resolves (the block
 // re-ran, so a fresh wrapper has replaced this one) the observer disconnects,
-// otherwise the stale observer keeps firing on a detached node and pins the
-// filtered dataset it closes over. Without ResizeObserver (SSR / no-DOM) or an
+// otherwise the stale observer keeps firing on a detached node and keeps the
+// filtered dataset it closes over in memory. Without ResizeObserver (SSR / no-DOM) or an
 // element, `onWidth` is invoked once with `fallbackWidth` so a build renders.
 function observeWidth(el, onWidth, { invalidation, fallbackWidth } = {}) {
   if (typeof ResizeObserver !== "function") {
@@ -403,8 +401,8 @@ function panelMarginLeft(maxValue, isFirst, format) {
 // One independently-scaled panel per scenario, sharing the panel scaffold (size,
 // memory x-axis, color scale, left-margin sizing). Consumers differ only in the
 // cell sub-object read (`field`), the per-panel y-max (`yMax`), the y-axis
-// label/tick format, and the marks, so cold/warm/footprint/tail/cost stay
-// structurally identical.
+// label/tick format, and the marks, so cold/warm/footprint/tail/cost share one
+// layout.
 function metricSmallMultiples(
   v,
   {
@@ -561,7 +559,7 @@ export const tailLatency = (v) =>
 // Not scoped to `batch`: its warm tail sits only modestly above its median on
 // every runtime including Rust, so it is uniform jitter on a slow median, not a
 // GC signature (README: batch's GC tail is "secondary"). Including it would
-// invite the high-tail-means-GC overread this chart avoids.
+// suggest that any high tail means GC, which this chart avoids.
 //
 // Log y-axis: in one panel the cache warm P99 runs from single-digit ms on the
 // non-GC runtime to several hundred on the GC'd ones (two orders of magnitude),
@@ -649,7 +647,7 @@ export const tailVsMedian = (v) => {
 // One panel per scenario over the memory axis, so the layout and legend match
 // the other headline charts. The y-axis is shared across panels: the chart
 // compares how far each runtime climbs off its 1.0 floor at low memory, which a
-// per-panel scale would destroy by rescaling each panel to its own peak.
+// per-panel scale would hide by rescaling each panel to its own peak.
 export function cpuSensitivity(v) {
   const m = v.stats.dimensions.memories;
   const maxMem = m[m.length - 1];
@@ -1123,7 +1121,7 @@ export function syntheticDownloadScaling(data, invalidation) {
           const s = all.filter((d) => (d.family ?? "python") === f);
           const c = colorOf(f);
           return [
-            // Dashed = the unreported download + start residual (the claim's subject).
+            // Dashed = the unreported download + start residual (what this chart measures).
             Plot.areaY(s, {
               x: "size_mb",
               y1: "residual_min",
@@ -1307,7 +1305,7 @@ export function zipVsImageDownloadScaling(imageData, invalidation) {
         // One shared tip over every plotted point (both lines, all series), so
         // the pointer surfaces only the nearest dot where the lines nearly
         // overlap (see the dumbbell builder). Each point carries its series' full
-        // init+residual so either dot shows the complete picture.
+        // init+residual so either dot shows both values.
         Plot.tip(
           all.flatMap((d) => [
             {
@@ -1574,7 +1572,7 @@ export function optDumbbell(v, { metric }) {
 //
 // Both segments are drawn rather than the total alone, because which segment the
 // tax lands in differs between the two scenarios. Empirically Lambda's two
-// cold-start phases appear to run on different CPU envelopes: Init phase ~ full
+// cold-start phases appear to run on different CPU allocations: Init phase ~ full
 // vCPU regardless of tier; Invoke phase = the tier's fractional vCPU.
 // (Init-phase boost from re:Invent 2019, not a contract; the caption above the
 // chart carries the disclaimer.)
@@ -1582,13 +1580,13 @@ export function optDumbbell(v, { metric }) {
 //     cliff that grows steeply as memory shrinks.
 //   - lettercount: tax lands in init (TLS handshake in the Init phase,
 //     measured-cheaper today) -> a roughly flat bump across tiers.
-// The chart shape (cliff vs flat bump) is what is measured; the phase-CPU
-// asymmetry is the most parsimonious explanation for the same one-time CPU cost
-// producing two wall-clock outcomes.
+// The chart shape (cliff vs flat bump) is what is measured; the CPU difference
+// between the two phases is the simplest explanation for the same one-time CPU
+// cost producing two different wall-clock results.
 //
 // Per-panel subtitle: the scenario IDs name the handler shape, not the phase the
-// TLS handshake lands in, yet the phase is the entire reason the two panels
-// differ. Pin the phase under each panel title.
+// TLS handshake lands in, but the phase is what makes the two panels differ, so
+// each panel names it under its title.
 const JITTER_PANEL_SUBTITLES = {
   oneclient:
     "First TLS handshake in the Invoke phase, on the configured tier's vCPU",
@@ -1615,7 +1613,8 @@ export function jitterCliff(v) {
   if (!archs.length) return document.createElement("div");
 
   // Ascending memory order (128 at top -> 3008 at bottom): the cliff is worst at
-  // the lowest tier and shrinks as memory grows, so the eye travels down it.
+  // the lowest tier and shrinks as memory grows, so it reads from worst to
+  // smallest top to bottom.
   // Matches the small->large convention on the other x-axes.
   const memories = v.memories.slice().sort((a, b) => a - b);
 
@@ -1700,8 +1699,7 @@ export function jitterCliff(v) {
 
   const items = panels.map(({ scenario, data, deltas, rowOrder }) => ({
     title: scenarioLabel(scenario),
-    // Subtitle pinning when the first TLS handshake happens: the only thing
-    // that distinguishes the two panels' shapes. See `JITTER_PANEL_SUBTITLES`.
+    // Where the first TLS handshake happens (see `JITTER_PANEL_SUBTITLES`).
     subtitle: JITTER_PANEL_SUBTITLES[scenario] ?? "",
     plot: (width) => ({
       ...plotBase,
@@ -1713,7 +1711,7 @@ export function jitterCliff(v) {
       marginRight: 60,
       marginTop: 20,
       marginBottom: 44,
-      // Shared so the equal-sized jitter tax reads equal-sized in both panels.
+      // Shared across panels (see `sharedDomain` above).
       x: { label: "Cold latency P50 (ms) →", grid: true, domain: sharedDomain },
       y: { domain: rowOrder, label: null, tickSize: 0 },
       color: { domain: ["init", "first request"], range: PAIRS.initFirst },
@@ -1758,7 +1756,7 @@ export function jitterCliff(v) {
 // ---- SnapStart A/B dumbbell ------------------------------------------------
 // Plain vs SnapStart cold-start P50, one row per runtime × scenario × arch ×
 // memory. `only` scopes to specific runtimes: a per-runtime page passes
-// `only: ["java"]` so it never sprouts rows for another runtime that later gains
+// `only: ["java"]` so it never gains rows for another runtime that later gains
 // a SnapStart variant; omitting it renders every runtime in snapCells. The
 // runtime appears in the row label only when more than one is shown.
 export function snapDumbbell(v, { only = null } = {}) {

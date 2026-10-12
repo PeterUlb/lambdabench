@@ -8,19 +8,19 @@
 // extracts a configured set of claims with type-mapping the way a real authorizer
 // does before handing them to a policy engine.
 //
-// The fairness split: RSA verification runs in a native crypto path (Go's
+// Fairness: RSA verification runs in a native crypto path (Go's
 // crypto/rsa + crypto/sha256, the runtime's assembly-optimized big-integer and
 // SHA routines), symmetric with Rust's AWS-LC, Node's WebCrypto/OpenSSL, Java's
 // JCA, and Python's cryptography/OpenSSL (see README "Fairness note"). Go's
-// standard-library crypto is the production RSA path the ecosystem ships. But
+// standard-library crypto is what Go programs use for RSA in production. But
 // RS256 verify is a cheap public-key op, so native crypto is only a small slice;
 // the surrounding in-language glue (base64url decode, JSON parse of
-// header/payload, claim extraction/type-mapping) dominates and is what spreads
-// the runtimes apart. The warm gap stays moderate and flat across memory tiers
+// header/payload, claim extraction/type-mapping) dominates and is where the
+// runtimes differ. The warm gap stays moderate and flat across memory tiers
 // (the native verify is not CPU-starved at 128 MB the way pure in-language work
-// is), placing authz between lettercount (all in-language, wide spread) and a
-// pure-crypto tie. Cold start spreads more strongly, by how lean each runtime is
-// at startup.
+// is), so authz sits between lettercount (all in-language, wide spread) and a
+// pure-crypto tie. Cold start differs more, depending on how much each runtime
+// loads at startup.
 package main
 
 import (

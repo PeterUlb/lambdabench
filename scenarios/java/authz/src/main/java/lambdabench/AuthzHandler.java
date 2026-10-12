@@ -32,18 +32,18 @@ import org.crac.Resource;
  *
  * <p>But RS256 verify is a cheap public-key op, so native crypto is only a small
  * slice; the surrounding in-language glue (base64url decode, JSON parse of
- * header/payload, claim extraction/type-mapping) dominates and is what spreads the
- * runtimes apart. The warm gap stays moderate and flat across memory tiers (the
+ * header/payload, claim extraction/type-mapping) dominates and is where the
+ * runtimes differ. The warm gap stays moderate and flat across memory tiers (the
  * native verify is not CPU-starved at 128 MB the way pure in-language work is),
- * placing authz between lettercount (all in-language, wide spread) and a
- * pure-crypto tie. Cold start spreads more strongly, by how lean each runtime is
- * at startup.
+ * so authz sits between lettercount (all in-language, wide spread) and a
+ * pure-crypto tie. Cold start differs more, depending on how much each runtime
+ * loads at startup.
  *
  * <p>For SnapStart, the handler primes itself via a CRaC {@code beforeCheckpoint}
- * hook (one real verify of the bundled token fixture during init, baking the
- * nimbus-jose-jwt / JCA class loading and JIT into the snapshot). The hook fires
- * only when a snapshot is taken; a plain function uses org.crac's no-op context,
- * so the same jar is unprimed.
+ * hook (one real verify of the bundled token fixture during init, so the
+ * nimbus-jose-jwt / JCA class loading and JIT are captured in the snapshot). The
+ * hook fires only when a snapshot is taken; a plain function uses org.crac's no-op
+ * context, so the same jar is unprimed.
  */
 public final class AuthzHandler implements RequestHandler<Map<String, Object>, Map<String, Object>>, Resource {
 

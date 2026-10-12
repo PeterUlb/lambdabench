@@ -1,7 +1,7 @@
-// Scenario "smithyfull": the realistic shape, a Smithy server framework (via the
+// Scenario "smithyfull": the realistic case, a Smithy server framework (via the
 // API Gateway adapter) hosting a real CreateOrder handler. The SSDK
 // deserializes + validates the request body, the handler does a real write flow
-// (KMS Encrypt a signature → DDB PutItem the order → S3 PutObject a receipt),
+// (KMS Encrypt a signature, then DDB PutItem the order, then S3 PutObject a receipt),
 // and the SSDK serializes a constraint-validated response. Represents a typical
 // production request handler.
 
@@ -19,7 +19,7 @@ const RECEIPT_KEY = process.env.LAMBDABENCH_RECEIPT_KEY;
 
 // Init phase: build the three AWS clients and the Smithy service handler once.
 // maxAttempts:1 disables SDK retries so a throttle/transient surfaces as a hard
-// failure, not a silently-retried inflated Duration. A failed run beats wrong data.
+// failure, not a silently-retried inflated Duration.
 const ddb = new DynamoDBClient({ maxAttempts: 1 });
 const kms = new KMSClient({ maxAttempts: 1 });
 const s3 = new S3Client({ maxAttempts: 1 });

@@ -1,4 +1,4 @@
-// Scenario "batch": a deserialize-heavy batch record processor (the canonical
+// Scenario "batch": a deserialize-heavy batch record processor (a typical
 // Kinesis/SQS-consumer shape).
 //
 // At init the handler fetches a large (~16 MB) JSON array of event records from
@@ -81,7 +81,8 @@ type response struct {
 
 // processBatch parses the whole batch and groups-by `key` into sum + count. The
 // parse allocates the full record graph and the map holds an entry per distinct
-// key. Both live for the duration of the call, which is the GC fuel.
+// key. Both live for the duration of the call; this is the graph the GC must
+// reclaim.
 func processBatch(payload []byte) (response, error) {
 	var records []record
 	if err := json.Unmarshal(payload, &records); err != nil {
@@ -122,8 +123,7 @@ func (s *state) handle(_ context.Context) (response, error) {
 func main() {
 	// Init phase: fetch the batch from S3 once and hold it in memory. Retries
 	// disabled (aws.NopRetryer): a throttle on the init-time fetch must surface as
-	// a hard failure, not be silently retried into an inflated init_ms. A failed
-	// run beats wrong data.
+	// a hard failure, not be silently retried into an inflated init_ms.
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRetryer(func() aws.Retryer { return aws.NopRetryer{} }))

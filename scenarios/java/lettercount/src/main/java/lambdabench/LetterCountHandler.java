@@ -20,17 +20,17 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
  * <p>In-language CPU work (the count is a tight loop over the decoded string's
  * chars, not a shared native library; for the ASCII-only payload each char equals
  * one byte). A hashing- or stringify-heavy workload would instead run in native
- * C/OpenSSL every runtime shares, measuring the library not the language. There is
- * a fresh object graph rebuilt per invoke: under a constrained heap
- * the tracing collector may add pauses in the warm tail while a non-GC runtime
- * stays flat. Counting is restricted to ASCII a..z so every language does
+ * C/OpenSSL every runtime shares, measuring the library not the language. The
+ * parse rebuilds a fresh object graph per invoke, so under a constrained heap the
+ * tracing collector may add pauses in the warm tail while a non-GC runtime stays
+ * flat. Counting is restricted to ASCII a..z so every language does
  * identical work and yields identical totals.
  *
  * <p>Not primed via CRaC {@code beforeCheckpoint} (see DESIGN.md §10). lettercount
  * has no SDK to hoist; the init-time S3 fetch already runs ahead of the snapshot.
  * A prime would warm Jackson and the count loop's JIT, an advantage no other
- * runtime gets an analog of. Leaving cold unprimed makes the SnapStart cold sample
- * measure restore + first-touch JIT cost, the same shape a non-SnapStart cold
+ * runtime gets. Leaving the cold path unprimed makes the SnapStart cold sample
+ * measure restore + first-touch JIT cost, the same costs a non-SnapStart cold
  * start pays.
  */
 public final class LetterCountHandler implements RequestHandler<Object, Map<String, Object>> {

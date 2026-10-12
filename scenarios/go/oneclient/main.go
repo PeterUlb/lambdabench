@@ -65,7 +65,7 @@ func main() {
 	// Init phase: resolve config and build the client once, reused across warm
 	// invokes. Retries disabled (aws.NopRetryer): a throttle/transient must
 	// surface as a hard failure, not be silently retried into an inflated
-	// Duration. A failed run beats wrong data.
+	// Duration.
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRetryer(func() aws.Retryer { return aws.NopRetryer{} }))
 	if err != nil {

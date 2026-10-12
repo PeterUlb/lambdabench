@@ -1,4 +1,5 @@
-//! Provisioning: IAM role + DynamoDB table, then create/update all functions.
+//! Provisioning: IAM role, DynamoDB table, KMS key, and S3 bucket/objects, then
+//! create/update all functions.
 
 use crate::aws::Aws;
 use crate::build::Artifact;
@@ -65,7 +66,7 @@ pub async fn deploy(
     println!("Ensuring DynamoDB table + seed item...");
     aws.ensure_table().await.context("ensuring table")?;
 
-    println!("Ensuring KMS key + S3 bucket/object (for three_client)...");
+    println!("Ensuring KMS key + S3 bucket/objects (for the KMS/S3 scenarios)...");
     let kms_key_id = aws.ensure_kms_key().await.context("ensuring KMS key")?;
     // Publish the resolved key id for the env-building / cold-trigger paths. The
     // OnceLock is set once per `Aws`; a second deploy on the same bundle that

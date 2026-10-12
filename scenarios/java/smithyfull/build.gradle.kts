@@ -1,4 +1,4 @@
-// smithyfull: the realistic shape, the Smithy server framework hosting a
+// smithyfull: the realistic case, the Smithy server framework hosting a
 // handler that does a real AWS write flow. CreateOrder KMS-encrypts a signature,
 // DDB PutItems the order, and S3 PutObjects a receipt, then returns a
 // constraint-validated Uuid response. Same generated CoffeeShop server SDK as
@@ -23,7 +23,6 @@ dependencies {
     implementation("software.amazon.smithy.java:aws-lambda-endpoint:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:server-api:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:aws-server-restjson:$smithyJavaVersion")
-    implementation("software.amazon.smithy.java:server-rpcv2-cbor:$smithyJavaVersion")
 
     implementation(platform("software.amazon.awssdk:bom:2.31.6"))
     implementation("software.amazon.awssdk:dynamodb")

@@ -26,12 +26,11 @@ dependencies {
     smithyBuild("software.amazon.smithy.java:codegen-plugin:$smithyJavaVersion")
     smithyBuild("software.amazon.smithy.java:server-api:$smithyJavaVersion")
 
-    // Runtime: the Lambda glue, the generated server runtime, and the protocols
-    // the service is annotated with (restJson1 + rpcv2Cbor).
+    // Runtime: the Lambda glue, the generated server runtime, and the restJson1
+    // server protocol module (the protocol the service is annotated with).
     implementation("software.amazon.smithy.java:aws-lambda-endpoint:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:server-api:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:aws-server-restjson:$smithyJavaVersion")
-    implementation("software.amazon.smithy.java:server-rpcv2-cbor:$smithyJavaVersion")
 }
 
 // The shared model is the single source of truth, same one the Rust/Node smithy

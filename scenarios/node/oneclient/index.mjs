@@ -10,7 +10,7 @@ const KEY = process.env.LAMBDABENCH_KEY;
 
 // Init phase: build the client once. maxAttempts:1 disables SDK retries so a
 // throttle/transient surfaces as a hard failure, not a silently-retried inflated
-// Duration. A failed run beats wrong data.
+// Duration.
 const client = new DynamoDBClient({ maxAttempts: 1 });
 
 export const handler = async () => {

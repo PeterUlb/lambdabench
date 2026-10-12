@@ -1,9 +1,11 @@
-//! Artifact building: cross-compiles the Rust binaries (cargo-lambda) and
-//! bundles the Node functions (esbuild via gradle codegen), then zips each into
+//! Artifact building: cross-compiles the Rust binaries (cargo-lambda) and Go
+//! binaries, bundles the Node functions (esbuild via gradle codegen), builds the
+//! Java zips (gradle), and assembles the Python bundles (pip), then zips each into
 //! a deployable artifact under `dist/`.
 //!
 //! Only the unique artifacts are built (deduped across memory configs, and
-//! across architecture for the arch-independent Node bundles).
+//! across architecture for the arch-independent Node, Java, and pure-Python
+//! bundles).
 
 use crate::config::{Arch, ArtifactKey, Jitter, Lang, Scenario};
 use anyhow::{Context, Result, bail};
@@ -21,9 +23,9 @@ pub struct Artifact {
     pub zip_path: PathBuf,
     /// Compressed deployment package size (what gets downloaded into the sandbox).
     pub zip_size_bytes: u64,
-    /// Uncompressed size of the deployed code (raw bootstrap binary, or the JS
-    /// bundle plus any sidecar files). This is closer to what is loaded/linked
-    /// during a cold start than the zip size.
+    /// Uncompressed size of the deployed code (the raw bootstrap binary for
+    /// Rust/Go, or the summed files of the Node, Java, or Python package). This is
+    /// closer to what is loaded/linked during a cold start than the zip size.
     pub unzipped_size_bytes: u64,
 }
 
@@ -98,8 +100,8 @@ pub fn build_all(
     let dist = repo_root.join("dist");
     std::fs::create_dir_all(&dist).context("creating dist/")?;
 
-    // Group work: Rust keys build individually; Node keys share one bundle pass;
-    // Java keys share one gradle invocation.
+    // Group work: Rust, Python, and Go keys build individually; Node keys share
+    // one bundle pass; Java keys share one gradle invocation.
     let mut rust_keys = Vec::new();
     let mut node_keys = Vec::new();
     let mut java_keys = Vec::new();
@@ -117,7 +119,7 @@ pub fn build_all(
 
     let mut artifacts = BTreeMap::new();
 
-    // --- Rust: cross-compile each (scenario, arch, opt) via cargo-lambda. ---
+    // --- Rust: cross-compile each (scenario, arch, opt, jitter) via cargo-lambda. ---
     for key in &rust_keys {
         let art = build_rust(repo_root, &dist, key)?;
         artifacts.insert(key.label(), art);
@@ -440,8 +442,8 @@ fn build_java(
 /// *Lambda* target (`python3.14`, the cell's arch, manylinux), not the host, so it
 /// cross-builds on macOS: boto3/PyJWT are pure-Python (arch-independent wheels) and
 /// `cryptography` ships a per-arch native `abi3` wheel. Per invariant #3, boto3 is
-/// bundled rather than taken from the runtime, so the artifact size and SDK version
-/// are honest and pinned.
+/// bundled rather than taken from the runtime, so the artifact size includes it and
+/// the SDK version is pinned.
 fn build_python(repo_root: &Path, dist: &Path, key: &ArtifactKey) -> Result<Artifact> {
     let scenario = key.scenario.as_str();
     let src_dir = repo_root.join("scenarios/python").join(scenario);

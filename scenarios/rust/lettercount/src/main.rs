@@ -11,7 +11,7 @@
 //!      bytes/code units, running in each runtime's own execution (Rust machine
 //!      code vs the V8 JIT) rather than a shared native library. Contrast a
 //!      hashing or `JSON.stringify`-heavy workload, where the time is spent in
-//!      native C++/OpenSSL both runtimes share, measuring the library not the
+//!      native C++/OpenSSL every runtime shares, measuring the library not the
 //!      language.
 //!   2. The parse rebuilds a fresh object graph each invoke, so a GC runtime may
 //!      show pauses in the warm tail under a constrained heap while a non-GC
@@ -59,8 +59,7 @@ fn count_letters(payload: &str) -> Result<[u64; 26], Error> {
 async fn main() -> Result<(), Error> {
     // Init phase: fetch the JSON payload from S3 once and hold it in memory.
     // Retries disabled: a throttle on the init-time fetch must surface as a hard
-    // failure, not be silently retried into an inflated init_ms. A failed run
-    // beats wrong data.
+    // failure, not be silently retried into an inflated init_ms.
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .retry_config(aws_config::retry::RetryConfig::disabled())
         .load()

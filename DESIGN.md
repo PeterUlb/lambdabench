@@ -6,12 +6,12 @@ scenario without silently breaking them. For *what each scenario is*, see the
 scenario tables in [README.md](README.md).
 
 If you are adding/editing a scenario: **read the Invariants
-first.** Most of them are not enforced by the compiler, it is entirely possible
-to write code that builds, deploys, runs, and produces *subtly wrong numbers*.
+first.** Most of them are not enforced by the compiler: code can build, deploy, and
+run, and still produce *subtly wrong numbers*.
 
 ---
 
-## The two groups the scenario set splits into
+## Scenario groups
 
 The scenarios split into two groups read on two different axes: **handler shapes**
 (`hello`, `smithy`, `oneclient`, `threeclient`, `smithyfull`), read on cold start,
@@ -33,7 +33,7 @@ deliberate middle ground between `lettercount` (pure in-language CPU, no native 
 and a pure-native tie: its native RS256 slice is small enough that the in-language
 claim-mapping glue still spreads the runtimes.
 
-**Three cross-cutting reading rules the probes share** (applied throughout the
+**Cross-cutting reading rules the probes share** (applied throughout the
 README Findings):
 - **Read warm tails in absolute ms, not the P99/P50 ratio.** A runtime with a
   tiny median posts a large *ratio* from ordinary allocator/OS jitter without a
@@ -75,7 +75,7 @@ README Findings):
      each language can achieve, e.g. Java could shave more with a bare POJO
      handler (basic/generic input + output types skip the `RequestHandler`
      interface and its dependency). We measure the conventional shape because
-     that is what people actually deploy, and because the handler-shape
+     that is what people deploy, and because the handler-shape
      comparison (`smithy` vs `hello`, `threeclient` vs `oneclient`) is only
      meaningful if every scenario uses the same handler convention. The site
      `hello` blurb is phrased accordingly ("the
@@ -92,11 +92,10 @@ README Findings):
    - **The fix, applied in `authz`:** Rust verifies RS256 via `jsonwebtoken` →
      **AWS-LC** (`aws-lc-rs`, assembly-optimized); Node via `jose` →
      WebCrypto/OpenSSL; Java via `nimbus-jose-jwt` → the JVM's built-in JCA
-     (`SunRsaSign`, the production RSA path the JDK ships); Python via `PyJWT` →
-     `cryptography` → OpenSSL (the production RSA path that ecosystem ships); Go
-     via `golang-jwt` → the standard library's `crypto/rsa` + `crypto/sha256`
-     (the runtime's assembly-optimized routines, the production RSA path Go
-     ships). All are the production path each ecosystem ships. The Rust
+     (`SunRsaSign`); Python via `PyJWT` → `cryptography` → OpenSSL; Go via
+     `golang-jwt` → the standard library's `crypto/rsa` + `crypto/sha256` (the
+     runtime's assembly-optimized routines). All are the production RSA path
+     each ecosystem ships. The Rust
      `jsonwebtoken` backend feature MUST be `aws_lc_rs`, **never** `rust_crypto`
      (a pure-software path that reintroduces the SHA trap). On the Python side
      the equivalent trap would be a pure-Python JWT/RSA implementation; `PyJWT`
@@ -124,10 +123,12 @@ README Findings):
    upgraded from cargo-lambda's default `lto="thin"` to **`fat`**, trading
    longer compile time for a more optimized binary, applied identically to
    every Rust cell so the o3-vs-oz and cross-language comparisons stay fair.
-   The standalone crates (smithy, smithyfull, excluded from the workspace
-   because they depend on gradle-generated code) must declare the SAME
-   `[profile.release]` locally, or they silently fall back to that `thin`
-   default and ship a less-optimized binary than the rest.
+   These settings live in the root `[profile.lambda]`, and `bencher` builds
+   every Rust cell with `cargo lambda build --profile lambda`. The standalone
+   crates (smithy, smithyfull, excluded from the workspace because they depend
+   on gradle-generated code) do not inherit the root profile, so each declares
+   the SAME `[profile.lambda]` locally; keep the copies identical, or those
+   cells ship a differently optimized binary than the rest.
    - **`AWS_LC_SYS_NO_JITTER_ENTROPY` does not key the cargo artifact path.**
      `aws-lc-sys`'s `build.rs` does emit `cargo:rerun-if-env-changed=...` so
      cargo reruns it on a value change, but the env value is not encoded into
@@ -217,7 +218,7 @@ README Findings):
    The function name LEADS the S3 key so writes spread across partition prefixes
    (S3 partitions by key prefix); the DDB PK is hashed, so its order does not matter.
 
-6. **SnapStart is measured PRIMED, the config you would actually ship.** SnapStart
+6. **SnapStart is measured PRIMED, the config you would ship.** SnapStart
    snapshots the JVM after init, but the AWS SDK v2's first-*invoke* costs (lazy
    class loading of the marshaller/endpoint/protocol graph, JIT, TLS, credential
    resolution) are not in the snapshot unless forced to run before the checkpoint.
@@ -273,7 +274,7 @@ README Findings):
       `createOrder` call, the dominant cost an operator CAN hoist), and the
       framework marshalling cost stays on the first restored invoke. `smithy` has
       no SDK or AWS call at all, so there is nothing an operator can hoist; it
-      registers NO `beforeCheckpoint` hook and is left genuinely unprimed. Do NOT
+      registers NO `beforeCheckpoint` hook and is left unprimed. Do NOT
       "fix" this by injecting a class into the
       `software.amazon.smithy.java.aws.integrations.lambda` package to construct
       the package-private event and call `handleRequest`: that drives the real
@@ -289,7 +290,7 @@ README Findings):
       SnapStart's cold sample on a CPU probe measure restore + first-touch JIT
       cost, the same shape a non-SnapStart cold start pays, fair vs the other
       runtimes.
-11. **It moves cost, does not hide it dishonestly:** priming shifts SDK warm-up
+11. **Priming moves cost; it does not hide it:** priming shifts SDK warm-up
     into snapshot-creation (publish) time, which is real and grows, but that is
     exactly what a production SnapStart deployment pays, and it is paid at publish,
     not per invoke. The benchmark measures invoke-time cold start, which is what
@@ -338,7 +339,7 @@ torn down within the run (both on success and on error); their names are part of
 the exact set `bencher teardown` reconstructs from config, so teardown is the hard
 backstop if a run is interrupted before its own cleanup. The size set is a fixed
 code const, not a CLI knob (like the matrix's iteration `Profile`), so teardown
-enumerates every name the probe can create, no size can slip past it. They are
+enumerates every name the probe can create. They are
 never part of the matrix, never recorded in the run data, and use a `synthdl` name
 segment that cannot collide with a matrix `function_name`.
 
@@ -354,9 +355,9 @@ pays it in the reported `Init Duration` (see lifecycle.md "Zip vs container
 image"). It falls under the same off-matrix framing as the zip mode, single
 account, illustrative, never matrix data, and writes a separate run-scoped JSON
 (`results/lifecycle-download-scaling-image-<run_id>.json`, gitignored and discovered
-by the site loader at build time, like the zip mode's output). Two things make it distinct: it is the
+by the site loader at build time, like the zip mode's output). It is the
 ONLY path in the codebase that shells out to a container tool (`crane`) and pushes
-to ECR (`ensure_ecr_repo` + `crane_ecr_login`); and it creates ECR resources
+to ECR (`ensure_ecr_repo` + `crane_ecr_login`), and it creates ECR resources
 (`lambdabench-synthdl` repo + per-run image tags) that the per-run teardown deletes,
 with `bencher teardown`'s exact-name delete of the `lambdabench-synthdl` repo (which
 force-deletes its images) as the hard backstop.
@@ -372,7 +373,7 @@ Numbers in prose go stale when the platform changes; the project handles this in
 three ways, one per surface:
 
 1. **Rendered pages** (`index`, `comparison`, `rust`, `java-snapstart`,
-   `appendix`) hardcode almost nothing, they render every figure from
+   `appendix`) hardcode almost nothing: they render every figure from
    `stats.json`, so a re-run updates them automatically. This is the default and
    the reason measured results live in the run data, not in prose (see the top of
    this file).
@@ -462,7 +463,7 @@ function, or (worse) a silently-wrong chart.
 **Artifacts:**
 - `scenarios/rust/<scenario>/`: new bin crate (Cargo.toml + src/main.rs). Add it
   to the root `Cargo.toml` workspace `members` (unless it depends on gradle codegen,
-  in which case `exclude` it and declare `[profile.release]` locally).
+  in which case `exclude` it and copy the root `[profile.lambda]` into it).
 - `scenarios/node/<scenario>/index.mjs`: the Node handler.
 - `scenarios/node/build.mjs`: add the scenario to the `scenarios` array.
 - `scenarios/java/<scenario>/`: new Gradle subproject (`build.gradle.kts` + a

@@ -3,8 +3,8 @@
 freshly built stats.json.
 
 check-lifecycle-prose.py guards lifecycle.md's numeric claims against the probe
-JSONs. This is its sibling for the OTHER drift surface: every number on the
-rendered pages self-updates from stats.json, but the *orderings* the prose
+JSONs. This script checks the OTHER prose that can drift: every number on the
+rendered pages updates itself from stats.json, but the *orderings* the prose
 asserts (which series wins where) are hand-written and a re-run can flip an
 edge. Guarded claims and where their prose lives:
 
@@ -288,7 +288,7 @@ for arch in stats["dimensions"].get("architectures", []):
 # ---- Claim 6: the non-GC runtime holds the lowest cache warm tail -----------
 # comparison.md: "The non-GC runtime holds the lowest tail at every tier."
 # Rust vs every other series' warm P99 on cache, per (arch, memory); a 15%
-# tolerance admits ties without letting a genuine reversal pass.
+# tolerance allows near-ties but still fails on a real reversal.
 rust_cache = lang_cells("rust", "cache")
 worst = None
 compared = 0

@@ -2,10 +2,10 @@ import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { EdgeStack } from "../lib/edge-stack";
 
-// Locks the security posture of the edge resources: the WAF Web ACL must
+// Checks the security settings of the edge resources: the WAF Web ACL must
 // actually enforce its managed rule groups (overrideAction `none`, not `count`),
 // and the certificate must validate via DNS against the supplied zone. A
-// regression to count-mode would silently turn the WAF into a no-op.
+// regression to count mode would silently stop the WAF from blocking anything.
 describe("EdgeStack", () => {
   const app = new cdk.App();
   const stack = new EdgeStack(app, "TestEdgeStack", {

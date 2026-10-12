@@ -1,5 +1,5 @@
-// Build-time data loader for the Cold Start Anatomy "How far does download
-// scale?" chart (zip synthetic sweep). Discovers the newest
+// Build-time data loader for the Cold Start Anatomy "Download cost at larger
+// sizes" chart (zip synthetic sweep). Discovers the newest
 // results/lifecycle-download-scaling-<run_id>.json (gitignored, already
 // aggregated) and emits it verbatim; fails loud when none exists. Served as
 // data/lifecycle-download-scaling.json.

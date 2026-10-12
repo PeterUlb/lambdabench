@@ -87,7 +87,6 @@ func main() {
 	// Init phase: fetch the JSON payload from S3 once and hold it in memory.
 	// Retries disabled (aws.NopRetryer): a throttle on the init-time fetch must
 	// surface as a hard failure, not be silently retried into an inflated init_ms.
-	// A failed run beats wrong data.
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRetryer(func() aws.Retryer { return aws.NopRetryer{} }))

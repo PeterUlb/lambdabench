@@ -63,7 +63,7 @@ impl Aws {
             .to_string();
 
         // If the alias fails to attach, the key just created is orphaned: the next
-        // `ensure_kms_key` searches only by alias, won't find it, and mints another
+        // `ensure_kms_key` searches only by alias, won't find it, and creates another
         // billable key, while teardown (which also resolves via the alias) can
         // never reach it. Best-effort schedule the orphan for deletion before
         // propagating the error, so a transient CreateAlias failure does not
@@ -93,7 +93,7 @@ impl Aws {
     /// allow immediate deletion) and removes the alias. Used by teardown.
     ///
     /// A leftover alias still pointing at a now-pending-delete key would let the
-    /// next deploy's `resolve_alias_key_id` resurrect it (KMS resolves aliases even
+    /// next deploy's `resolve_alias_key_id` return it again (KMS resolves aliases even
     /// for keys in `PendingDeletion`), wiring functions to a key that disappears
     /// mid-run. So a non-not-found alias-delete error is surfaced; an absent alias
     /// is success.
@@ -102,7 +102,7 @@ impl Aws {
     /// as its own step: that sweep is best-effort and account/region-wide (it walks
     /// keys we never created), so folding it into this `Result` would report this
     /// step as failed (hiding that the key and alias were in fact torn down)
-    /// whenever the sweep alone hits trouble.
+    /// whenever only the sweep fails.
     pub async fn delete_kms_key(&self) -> Result<()> {
         let key_id = self
             .resolve_alias_key_id("kms:ListAliases (teardown)")

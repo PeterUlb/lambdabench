@@ -32,15 +32,15 @@ if (!REPO_URL) {
 // that can be retired.
 export const CONTACT_EMAIL = process.env.LAMBDABENCH_CONTACT_EMAIL ?? null;
 
-// Default description used when a page has no entry in DESCRIPTIONS.
-// Keyword-bearing for the head query.
+// Default description used when a page has no entry in DESCRIPTIONS. It
+// carries the main search keywords.
 const DEFAULT_DESCRIPTION =
   "An independent AWS Lambda runtime benchmark of Rust, Node.js, Python, Java (plus SnapStart), and Go: cold start, warm latency, cost per million, P99/P99.9 tail, and arm64 vs x86_64.";
 
 // Per-page meta descriptions, keyed by normalized page path. Framework's front
 // matter parser drops unknown keys (only an allowlist like `title`/`keywords`
 // survives), so a per-page `description:` in the .md would never reach the head
-// function; keeping descriptions here is the reliable place for them.
+// function, so the descriptions live here instead.
 const DESCRIPTIONS = {
   "/": DEFAULT_DESCRIPTION,
   "/comparison":
@@ -166,7 +166,7 @@ export default {
   // All SEO/social meta plus the stylesheet link are emitted per page here.
   head,
   // Format internal links as "/foo.html" so each maps directly to its built S3
-  // object, so a private-S3 + CloudFront (OAC) host needs no edge rewrite (only
+  // object and a private-S3 + CloudFront (OAC) host needs no edge rewrite (only
   // a redirect for external extensionless links). The home link stays "/".
   preserveExtension: true,
   // The benchmark is a fixed dataset, so a static toc + the default sidebar is

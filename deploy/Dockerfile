@@ -15,8 +15,8 @@
 #   crane                (daemonless OCI push for the zip-vs-image probe family)
 #
 # Tracks the 24.04 tag (not a digest) so the base keeps receiving security updates;
-# the layers above pull current toolchains at build time regardless, so a digest pin
-# would freeze only one link of a chain that already floats. Runs as root by design:
+# the layers above pull current toolchains at build time anyway, so pinning the base
+# by digest would not make the image reproducible. Runs as root by design:
 # this is an ephemeral, single-tenant Fargate task whose toolchain (rustup/cargo, pip)
 # installs under /root, and it holds no long-lived secrets.
 FROM ubuntu:24.04
@@ -27,7 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_TERM_COLOR=never
 
 # --- Base packages -----------------------------------------------------------
-# rsync is used by the bencher to lift the Node Smithy SSDK out of gradle's
+# rsync is used by the bencher to copy the Node Smithy SSDK out of gradle's
 # tracked output dir before npm/esbuild bundles it (build.rs::copy_ssdk).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git unzip xz-utils zip rsync \

@@ -93,7 +93,7 @@ struct RunArgs {
     arch: Option<String>,
     /// Skip the build step and reuse the artifacts already in `dist/`. Fails
     /// loud if a required artifact is missing. Use when nothing has changed
-    /// since the last build (avoids re-running cargo / esbuild).
+    /// since the last build (avoids re-running cargo / esbuild / gradle / pip / go).
     #[arg(long)]
     skip_build: bool,
     /// Skip the deploy step and invoke the functions as already deployed. Fails

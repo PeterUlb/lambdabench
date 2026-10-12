@@ -29,9 +29,9 @@ impl Aws {
                 // A table left in DELETING by a preceding teardown is not usable:
                 // treating it as "present" and falling through to
                 // wait_table_active would race the delete completing (DescribeTable
-                // starts returning ResourceNotFound and the wait bails). Drain the
-                // delete first, then recreate, so a deploy right after a teardown is
-                // reliable.
+                // starts returning ResourceNotFound and the wait bails). Wait for the
+                // delete to finish, then recreate, so a deploy right after a teardown
+                // is reliable.
                 let status = out.table().and_then(|t| t.table_status()).cloned();
                 if status == Some(TableStatus::Deleting) {
                     self.wait_table_gone().await?;

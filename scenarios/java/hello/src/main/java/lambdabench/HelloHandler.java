@@ -6,8 +6,8 @@ import java.util.Map;
 
 /**
  * Scenario "hello": the runtime baseline, with no AWS clients and no framework.
- * Ignores the event and returns a constant object, mirroring the Rust and Node
- * {@code hello} handlers. Isolates the bare JVM cold-start and per-invoke
+ * Ignores the event and returns a constant object, mirroring the other
+ * languages' {@code hello} handlers. Isolates the bare JVM cold-start and per-invoke
  * overhead.
  */
 public final class HelloHandler implements RequestHandler<Object, Map<String, String>> {

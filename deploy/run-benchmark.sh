@@ -14,7 +14,7 @@
 #   SITE_BUCKET         - S3 bucket the built site is synced into (public via CloudFront)
 #   ARCHIVE_BUCKET      - private S3 bucket for raw run-* archives (no public origin)
 #   DISTRIBUTION_ID     - CloudFront distribution to invalidate after publish
-#   LAMBDABENCH_SITE_DOMAIN  - apex domain baked into canonical/OG/sitemap URLs
+#   LAMBDABENCH_SITE_DOMAIN  - apex domain used in canonical/OG/sitemap URLs
 #   LAMBDABENCH_REPO_URL     - public source-repo URL the footer's "Source on GitHub"
 #                         link points to (inherited by npm run build, which
 #                         throws without it)
@@ -36,7 +36,7 @@ cd /lambdabench
 
 # All lambdabench-* resources live in eu-central-1 (pinned in bencher/src/config.rs).
 # The bencher pins the region on every SDK client itself; the raw `aws` CLI calls in
-# the publish steps below get it explicitly here too, rather than leaning on the
+# the publish steps below get it explicitly here too, instead of relying on the
 # Fargate-injected AWS_REGION, so the region is never left to default resolution.
 REGION="eu-central-1"
 
@@ -89,10 +89,10 @@ echo "== [2/8] run: build + deploy + benchmark (hours-long) -> results/run-<id>.
 cargo run --release -p bencher -- run
 
 # Archive the matrix run IMMEDIATELY, before the probes. The matrix run is the
-# pipeline's primary, hours-long product; the probes that follow drive repeated
+# pipeline's main, hours-long output; the probes that follow drive repeated
 # control-plane cold-forces and can fail, and the site build after them can fail
-# too. Archiving the raw run here (rather than only at the end) means neither a
-# probe hiccup nor a build failure can lose it. The probe outputs are archived
+# too. Archiving the raw run here (not only at the end) means neither a
+# probe failure nor a build failure can lose it. The probe outputs are archived
 # separately at step [7], after they are produced. The matrix functions stay
 # deployed for the probes (teardown is on the EXIT trap, which has not fired yet).
 echo "== [3/8] archive matrix run: copy raw results/run-* to s3://$ARCHIVE_BUCKET/ =="
@@ -107,15 +107,15 @@ aws s3 cp results/ "s3://$ARCHIVE_BUCKET/" --region "$REGION" \
 # reflects THIS run. Running here (on Fargate, in-region) keeps warm_rtt small, so
 # the per-sample residual spread is far tighter than from an off-region client.
 #
-# This is a documentation probe (caller-side wall-clock), deliberately OUTSIDE the
+# This is a documentation probe (caller-side wall-clock), deliberately outside the
 # benchmark matrix and its fairness/measurement-purity invariants (see DESIGN.md).
 # NON-FATAL by the `if ! ...` guard (required because `set -e` would otherwise
-# abort): a warning here names WHICH probe failed. There is no committed fallback,
+# abort): a warning here names which probe failed. There is no committed fallback,
 # so if this probe produces no output the site build (step [8]) fails loud at the
 # loader and nothing publishes; the live site keeps serving the previous publish,
 # and the matrix run is already archived (step [3]). The probe itself retries
 # a transient per-cell failure (bencher probe::retry_transient), so a one-off
-# control-plane blip does not reach this warning.
+# control-plane error does not reach this warning.
 echo "== [4/8] probe download-start: pre-Init download+start (in-region) -> results/lifecycle-download-start-<id>.json =="
 if ! cargo run --release -p bencher -- probe download-start; then
   echo "WARNING: probe download-start step failed; the site build will fail loud (no committed fallback)" >&2
@@ -126,7 +126,7 @@ fi
 # each size, and tears them down itself, writing results/lifecycle-download-scaling-<id>.json.
 # Self-contained (independent of the matrix), and in-region here so warm_rtt is tight.
 #
-# --with-image ALSO runs the zip-vs-container-image family: per size it assembles
+# --with-image also runs the zip-vs-container-image family: per size it assembles
 # ONE padded container image with crane (daemonless: base pull + one layer append +
 # CMD + push to the lambdabench-synthdl ECR repo, no Docker/finch VM, so it runs
 # here on Fargate), deploys touched+untouched functions from it, measures, tears the
@@ -135,9 +135,9 @@ fi
 # single-session snapshot.
 #
 # NON-FATAL by the `if ! ...` guard, same rationale as the download-start step:
-# the warning names the failing probe, but with no committed fallback a produced-
-# nothing outcome fails the build loud at step [8] rather than publishing stale
-# data. Its functions/images are named lambdabench-synthdl-* and swept by teardown
+# the warning names the failing probe, but with no committed fallback a probe
+# that produces nothing makes the build fail loud at step [8] instead of
+# publishing stale data. Its functions/images are named lambdabench-synthdl-* and swept by teardown
 # (functions + ECR repo) as a backstop.
 echo "== [5/8] probe download-scaling --with-image (in-region) -> results/lifecycle-download-scaling{,-image}-<id>.json =="
 if ! cargo run --release -p bencher -- probe download-scaling --with-image; then
@@ -150,8 +150,8 @@ fi
 # still hold against the three JSONs the probes just refreshed. Most exact ms on
 # the page are derived from those JSONs at build time, but the qualitative shape
 # claims are prose, and lifecycle.md is the one page carrying such claims (the other
-# pages render from stats.json or use dated README snapshots), so it is the drift
-# surface. NON-FATAL: a Lambda-platform shift that moves the numbers should warn
+# pages render from stats.json or use dated README snapshots), so it is the page
+# whose prose can drift. NON-FATAL: a Lambda-platform shift that moves the numbers should warn
 # loudly (so the prose gets revisited) without blocking the publish; the data
 # itself is still valid.
 echo "== [6/8] prose check: lifecycle.md claims vs refreshed probe data =="
@@ -170,16 +170,16 @@ aws s3 cp results/ "s3://$ARCHIVE_BUCKET/" --region "$REGION" \
   --recursive --exclude "*" --include "lifecycle-*.json"
 
 # Publish before the EXIT trap tears resources down, so the site is built and
-# pushed while the run's results are still in hand.
+# pushed while the run's results are still on disk.
 echo "== [8/8] publish: build the site from the newest run and deploy it =="
 # The data loaders auto-select the newest results/ inputs: stats.json.js picks the
 # newest run-*, and the lifecycle-*.json.js loaders the newest probe outputs.
-# LAMBDABENCH_SITE_DOMAIN bakes the real canonical URLs. With no committed probe
+# LAMBDABENCH_SITE_DOMAIN sets the real canonical URLs. With no committed probe
 # fallback, a probe that produced nothing makes this build fail loud here.
 ( cd site && npm ci && npm run build )
 
-# Sibling of the lifecycle prose check, for the other drift surface: the ORDERING
-# claims the findings prose asserts (SnapStart win/lose split, Go-vs-Rust shapes,
+# Same kind of check as the lifecycle prose check, for the other prose that can
+# drift: the ORDERING claims the findings prose asserts (SnapStart win/lose split, Go-vs-Rust shapes,
 # opt-level and jitter directions, the cache tail floor, the quoted smithy-java
 # version) checked against the stats.json the build above just produced. NON-FATAL
 # for the same reason as step [6]: a flipped finding should warn loudly without
@@ -195,7 +195,7 @@ fi
 # the icons are served under stable URLs, so an immutable header would pin a stale
 # icon in browser caches for a year (CloudFront invalidation never reaches those).
 #
-# Each pass owns --delete over its OWN key space, and the two spaces are disjoint
+# Each pass owns --delete over its own key space, and the two spaces are disjoint
 # (pass 1 excludes the un-hashed set, pass 2 includes only it), so together they
 # prune every stale object. A filter-excluded object is never eligible for
 # --delete, so pass 1 leaves stale HTML behind and pass 2 must delete it: without

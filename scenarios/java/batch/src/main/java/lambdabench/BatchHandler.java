@@ -19,7 +19,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
 /**
- * Scenario "batch": a deserialize-heavy batch record processor (the canonical
+ * Scenario "batch": a deserialize-heavy batch record processor (a typical
  * Kinesis/SQS-consumer shape). At init the handler fetches a ~16 MB JSON array of
  * event records from S3 and keeps the raw text in memory. Each warm invoke parses
  * the whole batch into records, groups-by {@code key} into a map of running
@@ -31,8 +31,9 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
  * (P99/P99.9) at the smaller memory tiers tracks allocation + GC: the parsed
  * records and the group map are all live simultaneously for the whole invoke, a
  * large transient object graph the JVM's tracing GC must promote then collect,
- * where a non-GC runtime just drops it. Java's tail is among the most pronounced
- * of the runtimes (large heap representation + a generational tracing collector).
+ * where a non-GC runtime drops it at end of scope. Java's tail is among the most
+ * pronounced of the runtimes (large heap representation + a generational tracing
+ * collector).
  *
  * <p>Contrast lettercount, which counts into a fixed {@code long[26]} (nothing
  * grows). Fetching the batch at init keeps the warm measurement pure compute. The
@@ -40,8 +41,8 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
  * native library, so the comparison is fair.
  *
  * <p>For SnapStart, the handler primes itself via a CRaC {@code beforeCheckpoint}
- * hook (one real parse+group-by during init, baking Jackson's class loading and
- * the group-by JIT into the snapshot). The hook fires only when a snapshot is
+ * hook (one real parse+group-by during init, so Jackson's class loading and the
+ * group-by JIT are captured in the snapshot). The hook fires only when a snapshot is
  * taken; a plain function uses org.crac's no-op context, so the same jar is
  * unprimed.
  */
@@ -92,8 +93,7 @@ public final class BatchHandler implements RequestHandler<Object, Map<String, Ob
     static {
         // Init phase: fetch the batch from S3 once and hold it in memory. Retries
         // disabled (doNotRetry): a throttle on the init-time fetch must surface as a
-        // hard failure, not be silently retried into an inflated init_ms. A failed
-        // run beats wrong data.
+        // hard failure, not be silently retried into an inflated init_ms.
         String bucket = env("LAMBDABENCH_BUCKET");
         String key = env("LAMBDABENCH_BATCH_KEY");
         try (S3Client s3 = S3Client.builder()

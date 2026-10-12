@@ -84,7 +84,7 @@ fn default_targets() -> Vec<(Lang, Scenario, i32)> {
     // those three axes rather than the whole matrix.
     // --- Axis 1: vCPU / memory (same function, vary the tier). Provisioning is
     // expected to be flat here (steps 1-2 run before the configured CPU applies).
-    // rust/hello is floor-free at every tier.
+    // rust/hello has no memory floor at any tier.
     let mut t: Vec<(Lang, Scenario, i32)> = vec![
         (Lang::Rust, Scenario::Hello, 128),
         (Lang::Rust, Scenario::Hello, 512),
@@ -115,7 +115,7 @@ fn default_targets() -> Vec<(Lang, Scenario, i32)> {
 
     // --- Axis 3: LANGUAGES on a realistic SDK-heavy handler, at a low and a high
     // tier, so the per-language floor and any vCPU effect are both visible. Uses
-    // each language's most real-world scenario it can host: smithyfull for the
+    // the most realistic scenario each language supports: smithyfull for the
     // runtimes that host it (rust/java/node), oneclient for those that cannot
     // (python/go skip the Smithy scenarios; see Lang::supports). These are also the
     // fattest artifact per language, so this doubles as the "big in every language"
@@ -206,10 +206,8 @@ pub(super) async fn run_download_start(
     for cell in &targets {
         let name = cell.function_name();
         println!("\n-- {name}");
-        // Buffer-then-commit per cell: take all N samples into a fresh Vec, return
-        // them only if every sample succeeds, so a transient failure re-runs the
-        // whole cell (via retry_transient) rather than leave a partially-sampled
-        // cell in the aggregate. Mirrors run_cell's discipline.
+        // Buffer-then-commit per cell (see `retry_transient`): a transient
+        // failure re-runs the whole cell. Same pattern as run_cell.
         let samples = sample_cold_series(
             &aws,
             &timed,

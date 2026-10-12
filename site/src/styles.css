@@ -425,8 +425,8 @@ table.summary.pctl tr.pctl-block-top td {
   border-top: 1px solid var(--grid);
 }
 
-/* Architecture win-rate. The tally is a 5-column table that should NOT bleed to
-   the full page width (it would leave absurd whitespace in the stacked-bar
+/* Architecture win-rate. The tally is a 5-column table that should NOT span
+   the full page width (it would leave a large empty gap in the stacked-bar
    column). Cap it to a comfortable measure and left-align; the collapsed
    per-cell detail box below is capped to the SAME width so their left and right
    edges line up. */
@@ -572,9 +572,9 @@ table.winrate .winseg:last-child {
   line-height: 1.5;
 }
 
-/* "Reading the ..." interpretive note: a chart-sub lifted a notch with a quiet
-   left accent, so a scanning reader catches the caveat that reframes the number
-   above it, without it reading as an alarm. */
+/* "Reading the ..." interpretive note: a chart-sub with a left accent border
+   and a light background, so a reader skimming the page notices the caveat about
+   the number above it, without it looking like a warning. */
 .chart-sub.read-me {
   border-left: 3px solid var(--accent);
   padding: 8px 12px;

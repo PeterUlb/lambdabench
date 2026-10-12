@@ -3,8 +3,8 @@
 //
 // Framework only writes page paths and referenced files to the output dir;
 // standalone files like these are not copied, and `rel="external"` head links do
-// not trigger a copy (framework discussion #1996). The endorsed approach is a
-// build step that reads the config and writes the files directly.
+// not trigger a copy (framework discussion #1996). The approach suggested there
+// is a build step that reads the config and writes the files directly.
 import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import config, { SITE_URL, servedPath } from "../observablehq.config.js";

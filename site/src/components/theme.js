@@ -30,9 +30,10 @@ export const PAIRS = {
 };
 
 // Thresholds below which two architectures are "too close to call" in the
-// win-rate tally: a relative gap under `tiePct` percent OR an absolute gap
-// under `tieMs` milliseconds counts as a tie. Single source of truth so the
-// tally logic and its legend text cannot disagree.
+// win-rate tally: a relative gap under `pct` percent OR an absolute gap under
+// `ms` milliseconds counts as a tie (the `ms` floor applies to cold init only;
+// see archWinRate in tables.js). Single source of truth so the tally logic and
+// its legend text cannot disagree.
 export const TIE = { pct: 2, ms: 0.5 };
 
 // Base Plot options shared by every chart (transparent so the page bg shows).
