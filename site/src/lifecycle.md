@@ -826,28 +826,37 @@ phases**. The boost covers one and not the other.
 
 Constructing the SDK client objects is not the difference (that costs well under 1 ms in both
 Rust and Go). The expensive part is standing up the HTTPS machinery (building the connector and
-loading the OS certificate store), and the two SDKs schedule it in opposite phases. A dated one-off
-set of isolating probes (taken 2026-07, single account, 128 MB arm64, timed internally, not committed
-data) makes this concrete; the ms below are rough magnitudes, not reproducible from the published
-dataset.
+loading the OS certificate store), and the two SDKs schedule it in opposite phases. Two dated
+one-off sets of isolating probes (single account, 128 MB arm64, timed internally, not committed
+data) make this concrete: the Rust `load()` breakdown was taken 2026-10 with `aws-config` 1.8.18,
+and the Go-vs-Rust first-call comparison further down was taken 2026-07. The ms below are rough
+magnitudes, not reproducible from the published dataset.
 
 **Rust resolves it eagerly, at init.** The probes show `aws_config::load().await` building the default HTTPS client
 while wiring up the credential providers, so the cost lands in the boosted Init phase:
 
-| Rust `aws_config::load()` at init           | median   |
-| ------------------------------------------- | -------- |
-| default (builds the HTTPS client)           | ~63 ms   |
-| with a no-op HTTP client supplied           | ~0.1 ms  |
-| with static credentials (no provider chain) | ~0.03 ms |
+| Rust `aws_config::load()` at init                            | median  |
+| ------------------------------------------------------------ | ------- |
+| first call, default (builds the HTTPS client)                | ~55 ms  |
+| first call, with a no-op HTTP client supplied                | ~20 ms  |
+| first call, with static credentials (no provider chain)      | ~17 ms  |
+| second call, with a no-op HTTP client supplied               | ~0.2 ms |
+| second call, with static credentials                         | ~0.1 ms |
+| default, after one untimed `load()` with static credentials  | ~38 ms  |
+| `load_native_certs()` alone, after the same untimed `load()` | ~30 ms  |
 
-Swapping in a no-op HTTP client collapses `load()` from ~63 ms to ~0.1 ms, so nearly the
-entire cost _is_ building that client. About ~18 ms of it is loading and parsing the OS root
-certificates; the rest is the TLS/connector assembly. Constructing the `aws-lc-rs` crypto
-provider is negligible (~0.001 ms); that is separate from the one-time RNG **seeding** the
-[jitter-entropy panel](./rust#the-aws-lc-rs-jitter-entropy-cold-start-tax) measures, which fires
+The first `load()` in a process costs ~17 ms even when it builds no HTTP client, and a second
+call with static credentials takes ~0.1 ms, so that ~17 ms is a one-time cost of running the SDK's
+setup code for the first time (the probes do not break it down further). With that paid, building
+the default HTTPS client and credential provider chain takes ~38 ms (the chain is ~3 ms of it,
+going by the no-op vs static first calls), and ~30 ms is loading and parsing the OS root
+certificates; the rest is the TLS/connector assembly. Constructing the `aws-lc-rs` crypto provider
+is negligible (~0.001 ms in the 2026-07 probes); that is separate from the one-time RNG **seeding**
+the [jitter-entropy panel](./rust#the-aws-lc-rs-jitter-entropy-cold-start-tax) measures, which fires
 later on the first TLS handshake and is switched off in these probes via
-`AWS_LC_SYS_NO_JITTER_ENTROPY=1` (the site default). Run the same `load()` in the handler instead,
-on the tier's ordinary CPU rather than the init boost, and it rises to ~725 ms, an ~11x jump.
+`AWS_LC_SYS_NO_JITTER_ENTROPY=1` (the site default). Run the default `load()` in the handler
+instead, on the tier's ordinary CPU rather than the init boost, and it rises to ~900 ms, a ~16x
+jump.
 
 **Go resolves it lazily, on the first request.** The probes show `LoadDefaultConfig` and `NewFromConfig` doing almost
 nothing eagerly (~0.3 ms); the HTTP transport (built once via `sync.Once`), the OS cert pool

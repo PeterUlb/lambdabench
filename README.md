@@ -496,6 +496,7 @@ bencher/      Rust CLI driver (doctor / build / run / probe / teardown)
 smithy/       Shared Smithy model (CoffeeShop service): single source of truth
 scenarios/    The deployed code: rust/ node/ java/ python/ go/ × {hello,smithy,oneclient,threeclient,smithyfull,lettercount,authz,batch,cache}
 deploy/       CDK app + Fargate runner that host and publish lambdabench.dev (see deploy/README.md)
+oneoff/       Standalone probes behind the site's dated one-off figures; not part of the matrix
 dist/         Built artifacts + build-manifest.json (generated)
 results/      run-<id>.jsonl.gz + meta (raw run output) and lifecycle-*-<id>.json (probe output); all git-ignored
 site/         Observable Framework interactive site (filterable; hostable static build)
