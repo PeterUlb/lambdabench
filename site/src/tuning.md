@@ -37,7 +37,7 @@ At 1,769 MB and above the handler has at least a full vCPU, so moving work to in
 
 <div class="note" label="Undocumented behavior">
 
-AWS does not document the Init-phase CPU boost, so it can change. If it does, the work costs what it would in the handler. Details: [work placed at init is subsidized](./lifecycle#work-placed-at-init-is-subsidized).
+AWS does not document the Init-phase CPU boost, so it can change. If it does, the work costs what it would in the handler. Details: [setup is cheaper at init than in the handler](./lifecycle#setup-is-cheaper-at-init-than-in-the-handler).
 
 </div>
 

@@ -127,17 +127,19 @@ const dlMaxZipMB = Math.round(
 
 ## What the REPORT line measures, and what it can't
 
-Every other page on this site is built from the Lambda `REPORT` line (Init and Invoke are distinct
-lifecycle phases, per the [lifecycle docs](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-context.html); Init
-is limited to 10 seconds, and since
-[August 1, 2025](https://aws.amazon.com/blogs/compute/aws-lambda-standardizes-billing-for-init-phase/)
-is billed uniformly like Invoke time: managed-runtime ZIP functions (Node/Java/Python here) previously
-had Init excluded, while custom runtimes on `provided.al2023` (Rust/Go here) already billed it). That
-line exposes only steps 3 and 4:
+Every other page on this site is built from the Lambda `REPORT` line, and that line exposes only
+steps 3 and 4:
 
 - **`Init Duration`** is step 3, from the start of the function's init code up to the moment the runtime
   signals readiness to the Lambda Runtime API.
 - **`Duration`** on the cold invoke is step 4, the handler itself.
+
+Init and Invoke are distinct lifecycle phases, per the
+[lifecycle docs](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-context.html). Init is limited
+to 10 seconds, and since
+[August 1, 2025](https://aws.amazon.com/blogs/compute/aws-lambda-standardizes-billing-for-init-phase/)
+it is billed uniformly like Invoke time. Before that, managed-runtime ZIP functions (Node/Java/Python
+here) had Init excluded, while custom runtimes on `provided.al2023` (Rust/Go here) already billed it.
 
 The reported `Init Duration` does not fold in steps 1-2; the measured numbers settle that,
 independent of how either diagram (above) labels the boundary. Take `rust/hello` (the row in the next
@@ -681,8 +683,8 @@ pulls only the blocks needed to boot, and the probe's padding is not among them 
 pre-init term stays flat. In the touched variant the handler reads `padding.bin` at import time, so
 those blocks fault in _while the Init Duration clock is running_ and the image's download of that code
 is counted **inside** `Init Duration`. That is why touched-init climbs with size
-while the residual does not. (This is the mechanism behind the table's `.zip`-vs-image footnote near
-the top of the page: for an image, part of the code "download" is reported, in step 3.) A `.zip`, by
+while the residual does not. (This is the mechanism behind the `.zip`-vs-image note under the table
+near the top of the page: for an image, part of the code "download" is reported, in step 3.) A `.zip`, by
 contrast (the paper's "first generation" architecture, still how `.zip` functions work), has the
 worker **"[download] the function image (a `.zip` file up to 250MiB in size) from Amazon S3, and
 [unpack] it"**, and it **"requires the full archive to be downloaded and unpacked before the new
@@ -772,7 +774,7 @@ decisive effect is _which phase_ work runs in. Two facts from AWS's docs frame i
 - **Init and Invoke are distinct phases** (above).
 
 What the docs do **not** state is that the two phases run on _different_ amounts of CPU.
-Measurements on this site and elsewhere are consistent with the Init phase running on a
+Measurements on this site (next section) and elsewhere are consistent with the Init phase running on a
 **boosted CPU, roughly a full vCPU regardless of the configured tier**, dropping to the tier's
 fractional allocation only when the handler starts. The clearest statement of it comes from
 AWS itself: in [re:Invent 2019, "Best practices for AWS Lambda and Java" (SVS403-R1)](https://www.youtube.com/watch?v=ddg1u5HLwg8&t=718s),
@@ -783,11 +785,6 @@ noting they do this "because we want the functions to start faster."
 The tier's fractional allocation is the **baseline the function is configured for and billed
 at**, not a penalty. The Init phase is the anomaly, running _above_ that baseline; the handler
 runs _at_ it.
-
-In these measurements, work done _before_ the handler is reached, resolving credentials and
-configuration, running a first TLS handshake, or any CPU-heavy static initialization, behaves as if
-it runs on the boosted CPU; the same work moved _into_ the handler behaves as if it runs at the
-tier's ordinary allocation, which below ~1.8 GB is a fraction of a vCPU and therefore much slower.
 
 <div class="warning" label="Observed behavior, not a contract">
 
@@ -800,10 +797,11 @@ way to read the measured numbers, not advice to build around an undocumented mec
 
 </div>
 
-## Work placed at init is subsidized
+## Setup is cheaper at init than in the handler
 
-Below ~1.8 GB, moving one-time setup into the Init phase makes it faster, because it runs on
-the boosted CPU rather than the tier's ordinary fraction. The effect is largest at the smallest
+Because of the boost, the same one-time setup (resolving credentials and configuration, a first
+TLS handshake, CPU-heavy static initialization) costs less in the Init phase than in the handler,
+where below ~1.8 GB it gets only the tier's fraction of a vCPU. The effect is largest at the smallest
 tiers, where the gap between the boosted and baseline allocations is widest, and shrinks toward
 zero as the configured memory approaches a full vCPU (at which point init and invoke run on
 roughly the same CPU and placement stops mattering).
@@ -817,7 +815,7 @@ same cost becomes a **cliff** in the invoke duration that grows steeply as memor
 
 ## Rust vs Go: same work, different phase
 
-This effect is largest _across_ languages, and is subtler than
+The effect also shows up _across_ languages, where it is subtler than
 "one runtime is faster." Take **Rust and Go**, two of the runtimes measured here. Their AWS SDKs
 can do the **same** expensive one-time setup, building an HTTPS client: load the operating
 system's root-certificate store, assemble the TLS stack, open the first connection, and still
