@@ -51,6 +51,8 @@ const DESCRIPTIONS = {
     "Anatomy of an AWS Lambda cold start: the download and environment-start steps no REPORT line shows, zip vs container image size cost, and the Init-phase CPU boost that rewards eager SDK init.",
   "/java-snapstart":
     "How much does AWS Lambda SnapStart cut Java cold starts? Plain JVM vs SnapStart restore latency measured across memory sizes and CPU architectures.",
+  "/tuning":
+    "Measured AWS Lambda cold-start levers and their trade-offs, by runtime: init placement and package size for all runtimes; RNG seeding, the jitter-entropy flag, root-certificate loading, and opt-level for Rust; SnapStart priming for Java; and Go's lazy SDK setup cost.",
   "/appendix":
     "AWS Lambda benchmark data appendix: cold vs warm latency distributions and full percentiles (P50/P90/P99/P99.9) per language, scenario, and memory tier, with per-cell sample counts.",
 };
@@ -177,6 +179,7 @@ export default {
     { name: "Cold Start Anatomy", path: "/lifecycle" },
     { name: "Rust", path: "/rust" },
     { name: "Java SnapStart", path: "/java-snapstart" },
+    { name: "Tuning", path: "/tuning" },
     { name: "Appendix", path: "/appendix" },
   ],
   // Global footer, two rows: a quiet fine-print disclaimer line, then a brighter
