@@ -8,6 +8,7 @@
 import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
 import { KMSClient, EncryptCommand } from "@aws-sdk/client-kms";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const TABLE = process.env.LAMBDABENCH_TABLE;
 const KEY = process.env.LAMBDABENCH_KEY;
@@ -22,7 +23,8 @@ const ddb = new DynamoDBClient({ maxAttempts: 1 });
 const kms = new KMSClient({ maxAttempts: 1 });
 const s3 = new S3Client({ maxAttempts: 1 });
 
-export const handler = async () => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   // 1. DynamoDB GetItem. Fail loud if the seeded item is absent: a missing item
   // means a broken benchmark setup, never a null fallback (matches the other
   // languages).

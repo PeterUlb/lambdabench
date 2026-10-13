@@ -14,6 +14,12 @@ public final class HelloHandler implements RequestHandler<Object, Map<String, St
 
     @Override
     public Map<String, String> handleRequest(Object event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         return Map.of("message", "hello", "scenario", "hello");
     }
 }

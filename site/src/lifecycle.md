@@ -983,19 +983,42 @@ crash costs more, as covered on the [SnapStart page](./java-snapstart#after-a-cr
   That is representative of well-written handlers, but it means a cold gap at 128 or 256 MB
   partly reflects _where_ each runtime places its setup, not only how fast it runs. The gap is
   expected to narrow at higher tiers.
-- **arm64 runs on more than one CPU generation.** In a one-off probe (2026-10), Lambda placed the
-  same arm64 function on Graviton2, Graviton3 and Graviton4 hosts, chosen per execution
-  environment, and the generation alone moved a Rust `smithyfull` cold start at 128 MB between
-  ~292 ms (Graviton4) and ~401 ms (Graviton2). The mix differed by region and is not under the
-  function's control, so each arm64 cold percentile here blends whatever mix the run drew, and a
-  rerun on a different mix can shift it. AWS does not document which generations Lambda uses.
-  The published run shows the same pattern without recording the CPU: Rust `smithyfull`'s 50
-  cold `Init Duration`s at 128 MB arm64 fall into three groups, 3 near ~77 ms, 39 near ~95 ms and
-  8 near ~121 ms, in about the ratio the probe measured between Graviton4, 3 and 2. The P50 is
-  therefore the most common generation's value, and part of the cold P90 is the host, not the
-  runtime. The x86_64 cells show a smaller second group too (6 of 50 near ~124 ms against ~145 ms),
-  so x86_64 hosts are not uniform either. Details: [cold-start tuning](./tuning), under "How
-  these numbers were measured".
+- **The host CPU varies, and the function does not choose it.** In one-off probes (2026-10,
+  `eu-central-1` and `us-east-1`), Lambda placed the same arm64 function on Graviton2, Graviton3
+  and Graviton4 hosts, chosen per execution environment. A Rust `smithyfull` cold start at 128 MB
+  took ~354 ms on Graviton3 and ~292 ms on Graviton4 in `eu-central-1`, and ~402 ms on Graviton2
+  and ~376 ms on Graviton3 in `us-east-1`. No region had enough of both Graviton2 and Graviton4 to
+  compare them directly, so combining the two per-region gaps puts Graviton2 about 30% slower than
+  Graviton4. The mix differed by region and between probes on the same day. On x86_64, Firecracker
+  (Lambda's VM layer) reports every host as a generic "Intel(R) Xeon(R) Processor" with only the
+  host's nominal clock, which hides the generation. Most cold starts showed "@ 2.50GHz". A few
+  hosts reported no clock, and those ran a CPU-bound Python loop ~24% faster than the "@ 2.50GHz"
+  hosts, which took about twice as long on that loop as Graviton4.
+- **On x86_64, Lambda also hides newer instructions.** In a second probe (a Python function at
+  1,769 MB, two runs of 30 cold starts per architecture), every x86_64 host showed the same feature
+  list: AVX2, but no AVX-512, ADX, SHA extensions or vector AES, and the model number of a Haswell
+  Xeon. That matches Firecracker's
+  [T2 template](https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md),
+  which copies the features of EC2's old T2 instances (the T2S and T2CL templates hide the same
+  ones). The cache sizes show different chips underneath: the "@ 2.50GHz" hosts report a 35.75 MB
+  cache, which fits a Cascade Lake Xeon, and the no-clock hosts a 105 MB cache, which fits a
+  Sapphire Rapids Xeon. Both chips have ADX, which crypto libraries use for the math in a TLS
+  handshake, and AVX-512. Sapphire Rapids also has the SHA extensions and AVX-512 IFMA, which some
+  RSA code uses. Because Lambda hides these features, code that picks its fastest path at run time
+  (OpenSSL, AWS-LC, ring, Go's crypto, the JVM's JIT) cannot use them. On arm64 each generation
+  showed its own extensions (SVE and SHA-512 from Graviton3 on, SVE2 on Graviton4), but pointer
+  authentication and SSBS, which EC2 Graviton instances list, were hidden on all of them. Python's
+  SHA-256 hashed 40 MB in ~25 ms on every Graviton, which has SHA-256 instructions, and in ~105 ms
+  on the common x86_64 hosts. Cascade Lake has no SHA instructions, so that gap comes from the chip
+  and would remain without the masking.
+- **What the host mix does to the numbers.** AWS does not document the host mix or the masking;
+  its [architecture page](https://docs.aws.amazon.com/lambda/latest/dg/foundation-arch.html) still
+  describes arm64 as Graviton2. Each cold percentile here mixes the hosts its run drew. The P50
+  mostly reflects the most common host, some of the P90 spread comes from slower hosts, and a rerun
+  on a different mix can move both. The [appendix](./appendix#host-cpus) lists the mix behind the
+  numbers on this site, for runs that recorded it. The `smithyfull` probe is described on
+  [cold-start tuning](./tuning), under "How these numbers were measured"; the probe code is under
+  `oneoff/rust-sdk-tuning`.
 - **For a handler where cold start matters below ~1.8 GB.** Setup work runs faster at init
   than on the first request (for a lazy SDK, that can require a small real call, not just
   constructing a client), and a higher memory tier runs the phases on comparable CPU. Neither

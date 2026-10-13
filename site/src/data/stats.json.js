@@ -110,6 +110,12 @@ const rows = [];
       max_memory_used_mb: r.max_memory_used_mb,
       artifact_unzipped_bytes: r.artifact_unzipped_bytes,
       artifact_zip_bytes: r.artifact_zip_bytes,
+      // The cycle's host CPU (x86 model name or arm64 part number), logged by
+      // the handler on an unrecorded invoke after the cycle; absent (null) in
+      // runs before the bencher recorded it. Kept on cold rows only: every row
+      // of a cycle carries the same value, and hostCpuMix counts one per cycle,
+      // so copying it onto millions of warm rows would only cost heap.
+      host_cpu: r.is_cold ? (r.host_cpu ?? null) : null,
     });
   }
 }

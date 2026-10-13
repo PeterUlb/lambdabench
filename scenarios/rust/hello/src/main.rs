@@ -7,7 +7,10 @@
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::{Value, json};
 
-async fn handler(_event: LambdaEvent<Value>) -> Result<Value, Error> {
+async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    lambdabench_cpuinfo::report_if_requested(
+        event.context.client_context.as_ref().map(|c| &c.custom),
+    );
     Ok(json!({ "message": "hello", "scenario": "hello" }))
 }
 

@@ -65,6 +65,14 @@ pub struct InvocationRow {
     pub billed_ms: f64,
     pub memory_size_mb: i64,
     pub max_memory_used_mb: i64,
+
+    /// The host CPU of the cycle's sandbox, as its handler logged it on an extra,
+    /// unrecorded invoke after the warm tail (see `run::apply_host_cpu`): the x86
+    /// model name (Firecracker's generic Intel Xeon name with the host's nominal
+    /// clock), or the arm64 implementer/part/variant (the part tells Graviton
+    /// generations apart), plus the vCPU count. The same on every row of a cycle,
+    /// since a sandbox stays on one host. Absent in runs recorded before it existed.
+    pub host_cpu: Option<String>,
 }
 
 /// Thread-safe append-only gzipped-JSONL writer.
@@ -229,12 +237,12 @@ impl RunMeta {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use flate2::read::GzDecoder;
     use std::io::Read;
 
-    fn sample_row() -> InvocationRow {
+    pub(crate) fn sample_row() -> InvocationRow {
         InvocationRow {
             run_id: "run-test".into(),
             ts_unix_ms: 1,
@@ -262,6 +270,7 @@ mod tests {
             billed_ms: 2.0,
             memory_size_mb: 128,
             max_memory_used_mb: 40,
+            host_cpu: Some("arm implementer=0x41 part=0xd40 variant=0x1; vcpus=2".into()),
         }
     }
 

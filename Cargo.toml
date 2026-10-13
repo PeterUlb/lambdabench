@@ -10,6 +10,7 @@ members = [
     "scenarios/rust/authz",
     "scenarios/rust/batch",
     "scenarios/rust/cache",
+    "scenarios/rust/cpuinfo",
     "oneoff/rust-sdk-init",
 ]
 # scenarios/rust/smithy and scenarios/rust/smithyfull are intentionally excluded:

@@ -24,6 +24,7 @@
 // native library, so the comparison is fair.
 
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const BUCKET = process.env.LAMBDABENCH_BUCKET;
 const OBJECT_KEY = process.env.LAMBDABENCH_BATCH_KEY;
@@ -38,7 +39,8 @@ const payload = await (async () => {
   return out.Body.transformToString();
 })();
 
-export const handler = async () => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   // Parse the whole batch (allocates the full record graph the GC must
   // reclaim), then group-by key into sum + count. The map and the parsed records
   // are all live for the duration of the call.

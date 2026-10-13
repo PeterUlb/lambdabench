@@ -717,6 +717,44 @@ impl Aws {
         payload: &str,
         qualifier: Option<&str>,
     ) -> Result<(InvokeResult, Duration)> {
+        self.invoke_tail_core(client, name, payload, qualifier, None)
+            .await
+    }
+
+    /// The cycle's extra, unrecorded invoke that asks the handler to log its host
+    /// CPU (`LAMBDABENCH_CPU ...`, see `scenarios/rust/cpuinfo`): the cell's usual
+    /// payload (see [`host_cpu_payload`] for the one exception) plus
+    /// [`HOST_CPU_CLIENT_CONTEXT`] as the ClientContext. Every runtime
+    /// hands the ClientContext to the handler's context object, and recorded
+    /// invokes carry none, so they never run the CPU read.
+    pub async fn invoke_host_cpu(
+        &self,
+        cell: &Cell,
+        qualifier: Option<&str>,
+    ) -> Result<InvokeResult> {
+        use base64::Engine;
+        let context = base64::engine::general_purpose::STANDARD.encode(HOST_CPU_CLIENT_CONTEXT);
+        self.invoke_tail_core(
+            &self.lambda,
+            &cell.function_name(),
+            &host_cpu_payload(cell),
+            qualifier,
+            Some(&context),
+        )
+        .await
+        .map(|(r, _)| r)
+    }
+
+    /// Shared `LogType=Tail` invoke: optional qualifier and optional base64
+    /// ClientContext.
+    async fn invoke_tail_core(
+        &self,
+        client: &aws_sdk_lambda::Client,
+        name: &str,
+        payload: &str,
+        qualifier: Option<&str>,
+        client_context: Option<&str>,
+    ) -> Result<(InvokeResult, Duration)> {
         let mut req = client
             .invoke()
             .function_name(name)
@@ -724,6 +762,9 @@ impl Aws {
             .payload(Blob::new(payload.as_bytes().to_vec()));
         if let Some(q) = qualifier {
             req = req.qualifier(q);
+        }
+        if let Some(c) = client_context {
+            req = req.client_context(c);
         }
         // Time only the round trip; the decode + validation below is local CPU
         // work that would otherwise pollute the measurement.
@@ -882,6 +923,36 @@ fn snap_start_for(cell: &Cell) -> SnapStart {
     SnapStart::builder().apply_on(apply_on).build()
 }
 
+/// ClientContext of the host-CPU invoke ([`Aws::invoke_host_cpu`](super::Aws::invoke_host_cpu)). Only the
+/// `custom` map is set: Rust's `lambda_runtime` defaults a missing `client` block,
+/// and the other runtimes parse the field leniently.
+pub const HOST_CPU_CLIENT_CONTEXT: &str = r#"{"custom":{"lambdabench":"cpu"}}"#;
+
+/// The payload of the host-CPU invoke: the cell's usual payload, except for the
+/// Java Smithy scenarios. Their Lambda handler is smithy-java's `LambdaEndpoint`,
+/// which leaves no place for our code to see the ClientContext, so the request
+/// itself carries the flag: a `GetOrder` of the reserved nil-UUID order id, which
+/// their `getOrder` answers by logging the CPU (see
+/// `scenarios/java/common/.../CpuInfo.java`). Recorded invokes never call GetOrder.
+fn host_cpu_payload(cell: &Cell) -> String {
+    use crate::config::Lang;
+    match (cell.scenario, cell.lang) {
+        (Scenario::Smithy | Scenario::SmithyFull, Lang::Java) => format!(
+            r#"{{
+  "path": "/order/{SMITHY_HOST_CPU_ORDER_ID}",
+  "httpMethod": "GET",
+  "multiValueHeaders": {{ "accept": ["application/json"] }},
+  "isBase64Encoded": false
+}}"#
+        ),
+        _ => invoke_payload(cell),
+    }
+}
+
+/// The reserved order id the Java Smithy providers answer by logging the CPU;
+/// must equal `CpuInfo.SMITHY_ORDER_ID` (a test checks).
+const SMITHY_HOST_CPU_ORDER_ID: &str = "00000000-0000-0000-0000-000000000000";
+
 /// The invocation payload for a cell. The `smithy`/`smithyfull` scenarios are
 /// fronted by a Smithy server SDK whose Lambda adapter dictates the event shape:
 /// Rust/Node use the AWS Smithy apigateway adapter (API Gateway v2 HTTP
@@ -957,3 +1028,18 @@ pub(crate) fn invoke_payload(cell: &Cell) -> String {
 /// fixture (gitignored, see `bencher/fixtures/README.md`); a compact JWT is URL-safe
 /// base64 with two dots, so it needs no JSON escaping.
 const AUTHZ_TOKEN: &str = include_str!("../../fixtures/authz_token.txt");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smithy_host_cpu_order_id_matches_java() {
+        let java =
+            include_str!("../../../scenarios/java/common/src/main/java/lambdabench/CpuInfo.java");
+        assert!(
+            java.contains(&format!("SMITHY_ORDER_ID = \"{SMITHY_HOST_CPU_ORDER_ID}\"")),
+            "CpuInfo.SMITHY_ORDER_ID must equal SMITHY_HOST_CPU_ORDER_ID"
+        );
+    }
+}

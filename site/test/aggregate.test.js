@@ -3,6 +3,8 @@ import {
   aggregate,
   assertRunComplete,
   assertRowsMatchMeta,
+  hostCpuLabel,
+  hostCpuMix,
 } from "../src/lib/aggregate.js";
 
 // Build a projected row with sane defaults; override per test. Matches the
@@ -620,5 +622,55 @@ describe("aggregate: kpi and meta", () => {
     });
     expect(out.meta.account_id).toBeUndefined();
     expect(JSON.stringify(out)).not.toContain("123456789012");
+  });
+});
+
+describe("host CPU mix", () => {
+  it("names Graviton generations by arm64 part and keeps x86 model names", () => {
+    expect(
+      hostCpuLabel("arm implementer=0x41 part=0xd0c variant=0x3; vcpus=2"),
+    ).toBe("Graviton2 (Neoverse N1)");
+    expect(
+      hostCpuLabel("arm implementer=0x41 part=0xd40 variant=0x1; vcpus=2"),
+    ).toBe("Graviton3 (Neoverse V1)");
+    expect(
+      hostCpuLabel("arm implementer=0x41 part=0xd4f variant=0x0; vcpus=2"),
+    ).toBe("Graviton4 (Neoverse V2)");
+    expect(
+      hostCpuLabel("arm implementer=0x41 part=0xd99 variant=0x0; vcpus=2"),
+    ).toBe("Arm part 0xd99");
+    expect(hostCpuLabel("Intel(R) Xeon(R) Processor @ 2.50GHz; vcpus=2")).toBe(
+      "Intel(R) Xeon(R) Processor @ 2.50GHz",
+    );
+    expect(hostCpuLabel("Intel(R) Xeon(R) Processor; vcpus=2")).toBe(
+      "Intel(R) Xeon(R) Processor",
+    );
+  });
+
+  it("counts cold starts per architecture and ignores warm rows", () => {
+    const g3 = "arm implementer=0x41 part=0xd40 variant=0x1; vcpus=2";
+    const g2 = "arm implementer=0x41 part=0xd0c variant=0x3; vcpus=2";
+    const x86 = "Intel(R) Xeon(R) Processor @ 2.50GHz; vcpus=2";
+    const mix = hostCpuMix([
+      row({ is_cold: true, init_ms: 10, host_cpu: g3 }),
+      row({ is_cold: false, host_cpu: g3 }),
+      row({ is_cold: true, init_ms: 10, host_cpu: g3, cycle: 1 }),
+      row({ is_cold: true, init_ms: 10, host_cpu: g2, cycle: 2 }),
+      row({ is_cold: true, init_ms: 10, arch: "x86_64", host_cpu: x86 }),
+      row({ is_cold: true, init_ms: 10, host_cpu: null, cycle: 3 }),
+    ]);
+    expect(mix.recorded).toBe(4);
+    expect(mix.missing).toBe(1);
+    expect(mix.byArch.arm64).toEqual([
+      { label: "Graviton3 (Neoverse V1)", n: 2, share: 2 / 3 },
+      { label: "Graviton2 (Neoverse N1)", n: 1, share: 1 / 3 },
+    ]);
+    expect(mix.byArch.x86_64).toEqual([
+      { label: "Intel(R) Xeon(R) Processor @ 2.50GHz", n: 1, share: 1 },
+    ]);
+  });
+
+  it("is null for runs without host_cpu", () => {
+    expect(hostCpuMix([row({ is_cold: true, init_ms: 10 })])).toBeNull();
   });
 });

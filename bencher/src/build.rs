@@ -437,7 +437,8 @@ fn build_java(
 }
 
 /// Assembles one Python scenario bundle and zips it for deployment: `handler.py`
-/// (plus, for `authz`, the generated public JWK) staged flat at the zip root, then
+/// and the shared `lambdabench_cpuinfo.py` (plus, for `authz`, the generated
+/// public JWK) staged flat at the zip root, then
 /// `pip install --target` for any declared `requirements.txt`. Deps resolve for the
 /// *Lambda* target (`python3.14`, the cell's arch, manylinux), not the host, so it
 /// cross-builds on macOS: boto3/PyJWT are pure-Python (arch-independent wheels) and
@@ -462,6 +463,12 @@ fn build_python(repo_root: &Path, dist: &Path, key: &ArtifactKey) -> Result<Arti
 
     std::fs::copy(&handler, staging.join("handler.py"))
         .with_context(|| format!("copying {} into staging", handler.display()))?;
+
+    // Every handler imports this lazily, only on the bencher's unrecorded
+    // host-CPU invoke (see the module), so it costs recorded invokes nothing.
+    let cpuinfo = repo_root.join("scenarios/python/lambdabench_cpuinfo.py");
+    std::fs::copy(&cpuinfo, staging.join("lambdabench_cpuinfo.py"))
+        .with_context(|| format!("copying {} into staging", cpuinfo.display()))?;
 
     // authz embeds the RSA public verification key (the same generated JWK the
     // other languages embed). The bencher's build.rs runs the fixture generator

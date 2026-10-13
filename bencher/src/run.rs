@@ -2,7 +2,8 @@
 //!
 //! For each function (cell): repeat `cold_cycles` times { bump COLD_NONCE to
 //! force a fresh sandbox; invoke once (cold); invoke `warm_per_cycle` times
-//! (warm) on that same sandbox }. Strictly serial within a function so warm
+//! (warm) on that same sandbox; then one unrecorded invoke that reports the
+//! sandbox's host CPU onto the cycle's rows }. Strictly serial within a function so warm
 //! invokes always hit the warm sandbox; functions run concurrently up to the
 //! pool size, since independent functions never share sandboxes.
 //!
@@ -163,11 +164,26 @@ const CYCLE_RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_milli
 
 /// The outcome of one attempt at a cold+warm cycle.
 enum CycleOutcome {
-    /// All invariants held; carries the buffered rows ready to flush.
-    Complete(Vec<InvocationRow>),
-    /// A warm invoke at this index came back cold (spontaneous AWS recycle);
-    /// the cycle must be discarded and re-run.
+    /// All invariants held; carries the buffered rows ready to flush and what the
+    /// host-CPU invoke after them returned (see `apply_host_cpu`).
+    Complete(Vec<InvocationRow>, HostCpu),
+    /// The warm invoke at this index after the cold start came back cold
+    /// (spontaneous AWS recycle); the cycle must be discarded and re-run.
     WarmRecycled { idx: u32 },
+}
+
+/// What a clean cycle's extra, unrecorded host-CPU invoke returned.
+#[derive(Debug)]
+enum HostCpu {
+    /// The handler logged its CPU.
+    Reported(String),
+    /// The invoke landed cold: AWS recycled the sandbox after the measured
+    /// invokes, so any CPU it reports would describe a different host.
+    Recycled,
+    /// The invoke ran warm but its log tail has no CPU line; carries the tail.
+    NoLine(String),
+    /// The invoke itself failed (call error, function error, no REPORT line).
+    Failed(anyhow::Error),
 }
 
 /// Maximum re-runs of a cell's cycle loop when an attempt fails. The per-cycle
@@ -273,13 +289,61 @@ async fn run_cycles(
     rows: &mut Vec<InvocationRow>,
 ) -> Result<()> {
     while *cycle < counts.cold {
-        let cycle_rows = run_one_cycle(aws, cell, counts, run_id, sizes, *cycle)
+        let (cycle_rows, host_cpu) = run_one_cycle(aws, cell, counts, run_id, sizes, *cycle)
             .await
             .with_context(|| format!("cycle {} of {}", *cycle, cell.function_name()))?;
+        let cpu_seen = rows.iter().any(|r| r.host_cpu.is_some());
+        let who = format!("{} (cycle {})", cell.function_name(), *cycle);
+        let cycle_rows = apply_host_cpu(cycle_rows, host_cpu, cpu_seen, &who)
+            .with_context(|| format!("host CPU of {who}"))?;
         rows.extend(cycle_rows);
         *cycle += 1;
     }
     Ok(())
+}
+
+/// Stamps a clean cycle's rows with the host CPU its extra invoke reported. The
+/// measured invokes are valid whatever that invoke returns, so when it landed
+/// cold, logged no CPU line or failed, the rows are kept without a host CPU (the
+/// site counts them as missing) rather than re-run, which would also favor
+/// sandboxes that survive one more invoke. The exception is a cell that has not
+/// reported a CPU yet (`cpu_seen` false): there a missing line or a failure fails
+/// loud, since it most likely means the deployed handler predates the reporting
+/// (a stale deploy under `--skip-deploy`). A cold invoke never fails, as it says
+/// nothing about the deployed code. Every kept-without-CPU case logs a warning.
+fn apply_host_cpu(
+    mut rows: Vec<InvocationRow>,
+    host_cpu: HostCpu,
+    cpu_seen: bool,
+    who: &str,
+) -> Result<Vec<InvocationRow>> {
+    let why = match host_cpu {
+        HostCpu::Reported(cpu) => {
+            for row in &mut rows {
+                row.host_cpu = Some(cpu.clone());
+            }
+            return Ok(rows);
+        }
+        HostCpu::Recycled => {
+            "the host-CPU invoke landed cold (AWS recycled the sandbox after the measured invokes)"
+                .to_string()
+        }
+        HostCpu::NoLine(log_tail) if !cpu_seen => bail!(
+            "the host-CPU invoke logged no LAMBDABENCH_CPU line and no earlier cycle of this cell reported one (is the deployed handler current?); log:\n{log_tail}"
+        ),
+        HostCpu::NoLine(_) => {
+            "no LAMBDABENCH_CPU line in the host-CPU invoke's log tail".to_string()
+        }
+        HostCpu::Failed(e) if !cpu_seen => {
+            return Err(e.context("the host-CPU invoke failed before this cell reported any CPU"));
+        }
+        HostCpu::Failed(e) => format!("the host-CPU invoke failed: {e:#}"),
+    };
+    eprintln!(
+        "[{}]   {who}: {why}; keeping the cycle without a host CPU",
+        utc_hms()
+    );
+    Ok(rows)
 }
 
 /// Runs one cold+warm cycle, buffering all rows and returning them only once the
@@ -294,13 +358,13 @@ async fn run_one_cycle(
     run_id: &str,
     sizes: crate::deploy::ArtifactSizes,
     cycle: u32,
-) -> Result<Vec<InvocationRow>> {
+) -> Result<(Vec<InvocationRow>, HostCpu)> {
     for attempt in 1..=MAX_CYCLE_ATTEMPTS {
         match try_one_cycle(aws, cell, counts, run_id, sizes, cycle).await? {
-            CycleOutcome::Complete(rows) => return Ok(rows),
+            CycleOutcome::Complete(rows, host_cpu) => return Ok((rows, host_cpu)),
             CycleOutcome::WarmRecycled { idx } => {
                 eprintln!(
-                    "[{}]   warm-recycle retry {attempt}/{MAX_CYCLE_ATTEMPTS} for {} (cycle {cycle}): warm invoke {idx} landed cold (AWS recycled the sandbox), re-running cycle",
+                    "[{}]   warm-recycle retry {attempt}/{MAX_CYCLE_ATTEMPTS} for {} (cycle {cycle}): invoke {idx} after the cold start landed cold (AWS recycled the sandbox), re-running cycle",
                     utc_hms(),
                     cell.function_name()
                 );
@@ -367,7 +431,7 @@ async fn try_one_latest_cycle(
     .await?
     {
         Some(idx) => Ok(CycleOutcome::WarmRecycled { idx }),
-        None => Ok(CycleOutcome::Complete(rows)),
+        None => report_host_cpu(aws, cell, None, rows).await,
     }
 }
 
@@ -511,8 +575,37 @@ async fn run_snapstart_invokes(
     .await?
     {
         Some(idx) => Ok(CycleOutcome::WarmRecycled { idx }),
-        None => Ok(CycleOutcome::Complete(rows)),
+        None => report_host_cpu(aws, cell, Some(version), rows).await,
     }
+}
+
+/// Ends a clean cycle with one extra, unrecorded invoke on the same sandbox that
+/// asks the handler for its host CPU (see `Aws::invoke_host_cpu`). It runs after
+/// the recorded invokes, so the CPU read never lands in a measured Init or
+/// Duration. What it returned is handed back with the rows; `apply_host_cpu`
+/// decides what the cycle keeps. Only a platform-level problem with the invoke
+/// is folded into `HostCpu::Failed`, never into the cycle's own result.
+async fn report_host_cpu(
+    aws: &Aws,
+    cell: &Cell,
+    qualifier: Option<&str>,
+    rows: Vec<InvocationRow>,
+) -> Result<CycleOutcome> {
+    let host_cpu = match aws.invoke_host_cpu(cell, qualifier).await {
+        Err(e) => HostCpu::Failed(e),
+        Ok(res) => match check_platform_ok(cell, &res).and_then(|()| {
+            parse_report(&res.log_tail)
+                .with_context(|| format!("parsing REPORT for {}", cell.function_name()))
+        }) {
+            Err(e) => HostCpu::Failed(e),
+            Ok(report) if report.is_cold() => HostCpu::Recycled,
+            Ok(_) => match crate::parse::parse_host_cpu(&res.log_tail) {
+                Some(cpu) => HostCpu::Reported(cpu),
+                None => HostCpu::NoLine(res.log_tail),
+            },
+        },
+    };
+    Ok(CycleOutcome::Complete(rows, host_cpu))
 }
 
 /// Issues the warm tail of a cycle (idx `1..=warm_per_cycle`) against the given
@@ -714,5 +807,64 @@ fn build_row(
         billed_ms: report.billed_ms,
         memory_size_mb: report.memory_size_mb,
         max_memory_used_mb: report.max_memory_used_mb,
+        // Filled for the whole cycle by `report_host_cpu` once the cycle's
+        // invokes are done.
+        host_cpu: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::record::tests::sample_row;
+
+    /// Two rows of a cycle that has no host CPU yet.
+    fn cycle() -> Vec<InvocationRow> {
+        (0..2)
+            .map(|_| InvocationRow {
+                host_cpu: None,
+                ..sample_row()
+            })
+            .collect()
+    }
+
+    fn cpus(rows: &[InvocationRow]) -> Vec<Option<&str>> {
+        rows.iter().map(|r| r.host_cpu.as_deref()).collect()
+    }
+
+    #[test]
+    fn reported_cpu_stamps_every_row() {
+        let rows = apply_host_cpu(cycle(), HostCpu::Reported("G4".into()), false, "t").unwrap();
+        assert_eq!(cpus(&rows), [Some("G4"), Some("G4")]);
+    }
+
+    #[test]
+    fn recycled_keeps_the_cycle_even_before_any_cpu() {
+        let rows = apply_host_cpu(cycle(), HostCpu::Recycled, false, "t").unwrap();
+        assert_eq!(cpus(&rows), [None, None]);
+    }
+
+    #[test]
+    fn missing_line_fails_until_the_cell_has_reported_a_cpu() {
+        assert!(apply_host_cpu(cycle(), HostCpu::NoLine("log".into()), false, "t").is_err());
+        let rows = apply_host_cpu(cycle(), HostCpu::NoLine("log".into()), true, "t").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(cpus(&rows), [None, None]);
+    }
+
+    #[test]
+    fn failed_invoke_fails_until_the_cell_has_reported_a_cpu() {
+        assert!(
+            apply_host_cpu(
+                cycle(),
+                HostCpu::Failed(anyhow::anyhow!("boom")),
+                false,
+                "t"
+            )
+            .is_err()
+        );
+        let rows =
+            apply_host_cpu(cycle(), HostCpu::Failed(anyhow::anyhow!("boom")), true, "t").unwrap();
+        assert_eq!(cpus(&rows), [None, None]);
     }
 }

@@ -161,6 +161,19 @@ pub fn parse_report(log_tail: &str) -> Result<Report> {
     })
 }
 
+/// The host CPU a handler logged on the cycle's host-CPU invoke: the text after
+/// the last `LAMBDABENCH_CPU ` marker in the log tail (see
+/// `scenarios/rust/cpuinfo`), or `None` if the handler did not log one. Managed
+/// runtimes may prefix log lines (timestamp, request id, level), so the marker is
+/// matched anywhere in a line.
+pub fn parse_host_cpu(log_tail: &str) -> Option<String> {
+    log_tail
+        .lines()
+        .filter_map(|l| l.split_once("LAMBDABENCH_CPU ").map(|(_, cpu)| cpu.trim()))
+        .rfind(|cpu| !cpu.is_empty())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +285,25 @@ mod tests {
     #[test]
     fn errors_without_report_line() {
         assert!(parse_report("START\nEND\n").is_err());
+    }
+
+    #[test]
+    fn host_cpu_from_plain_and_prefixed_lines() {
+        let tail = "START RequestId: r\nLAMBDABENCH_CPU arm implementer=0x41 part=0xd40 variant=0x1; vcpus=2\nEND RequestId: r\n";
+        assert_eq!(
+            parse_host_cpu(tail).as_deref(),
+            Some("arm implementer=0x41 part=0xd40 variant=0x1; vcpus=2")
+        );
+        let prefixed = "2026-10-13T20:00:00.000Z\tabc\tINFO\tLAMBDABENCH_CPU Intel(R) Xeon(R) Processor @ 2.50GHz; vcpus=2\n";
+        assert_eq!(
+            parse_host_cpu(prefixed).as_deref(),
+            Some("Intel(R) Xeon(R) Processor @ 2.50GHz; vcpus=2")
+        );
+        assert_eq!(parse_host_cpu("REPORT RequestId: r\tDuration: 1 ms"), None);
+        // The last non-empty marker wins; an empty one is skipped.
+        let several =
+            "LAMBDABENCH_CPU first; vcpus=2\nLAMBDABENCH_CPU second; vcpus=2\nLAMBDABENCH_CPU \n";
+        assert_eq!(parse_host_cpu(several).as_deref(), Some("second; vcpus=2"));
+        assert_eq!(parse_host_cpu("LAMBDABENCH_CPU   \n"), None);
     }
 }

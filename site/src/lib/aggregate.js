@@ -145,6 +145,60 @@ function sampleGroup(values) {
   return out.concat(tail);
 }
 
+// ---- Host CPU ---------------------------------------------------------------
+// Each cycle's rows carry the host CPU its sandbox ran on (`host_cpu`, recorded
+// by the bencher after the measured invokes; null in runs that predate it). The
+// arm64 part numbers below are Arm's Neoverse cores in AWS's Graviton
+// generations; Firecracker (Lambda's VM layer) passes them through from the host.
+// On x86 it normalizes the model name to "Intel(R) Xeon(R) Processor" plus the
+// host's nominal clock (and its CPU template fixes family/model/stepping), so the
+// x86 label is the logged name as is: its clock is what differs between hosts.
+const GRAVITON_PARTS = {
+  "0xd0c": "Graviton2 (Neoverse N1)",
+  "0xd40": "Graviton3 (Neoverse V1)",
+  "0xd4f": "Graviton4 (Neoverse V2)",
+};
+
+/** A readable name for a logged `host_cpu` value (the vCPU count dropped). */
+export function hostCpuLabel(raw) {
+  const cpu = String(raw).split("; vcpus=")[0].trim();
+  const part = /\bpart=(0x[0-9a-f]+)/i.exec(cpu)?.[1]?.toLowerCase();
+  if (part) return GRAVITON_PARTS[part] ?? `Arm part ${part}`;
+  return cpu;
+}
+
+/**
+ * The mix of host CPUs per architecture, counted over cold starts (one per
+ * cycle, so each sandbox counts once), largest share first. null when no row
+ * carries `host_cpu`.
+ */
+export function hostCpuMix(rows) {
+  const counts = new Map();
+  let recorded = 0;
+  let missing = 0;
+  for (const r of rows) {
+    if (!r.is_cold) continue;
+    if (r.host_cpu == null) {
+      missing++;
+      continue;
+    }
+    recorded++;
+    const label = hostCpuLabel(r.host_cpu);
+    const byArch = counts.get(r.arch) ?? new Map();
+    byArch.set(label, (byArch.get(label) ?? 0) + 1);
+    counts.set(r.arch, byArch);
+  }
+  if (recorded === 0) return null;
+  const byArch = {};
+  for (const [arch, labels] of [...counts].sort()) {
+    const total = [...labels.values()].reduce((a, b) => a + b, 0);
+    byArch[arch] = [...labels]
+      .map(([label, n]) => ({ label, n, share: n / total }))
+      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+  }
+  return { byArch, recorded, missing };
+}
+
 // Build the compact payload from the projected rows. `meta` may be empty for
 // older runs; `inputBasename` is carried through to the payload provenance.
 // Throws on a known-incomplete run via the cold-row gates below; the meta-level
@@ -627,5 +681,7 @@ export function aggregate(rows, meta = {}, { inputBasename = null } = {}) {
     // multi-million-row source twice.
     dist,
     distMedians,
+    // Host CPU mix of the run's cold starts; null for runs before it was recorded.
+    hostCpu: hostCpuMix(rows),
   };
 }

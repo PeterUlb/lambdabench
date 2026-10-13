@@ -101,5 +101,11 @@ async fn main() -> Result<(), Error> {
         object_key: env::var(ENV_OBJECT).map_err(|_| format!("{ENV_OBJECT} not set"))?,
     };
 
-    lambda_runtime::run(service_fn(|_event: LambdaEvent<Value>| handle(&clients))).await
+    lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
+        handle(&clients)
+    }))
+    .await
 }

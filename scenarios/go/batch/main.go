@@ -37,6 +37,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // Environment variables injected by the bencher at deploy time.
@@ -116,7 +117,8 @@ func processBatch(payload []byte) (response, error) {
 	}, nil
 }
 
-func (s *state) handle(_ context.Context) (response, error) {
+func (s *state) handle(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	return processBatch(s.payload)
 }
 

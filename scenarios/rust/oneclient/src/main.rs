@@ -49,7 +49,10 @@ async fn main() -> Result<(), Error> {
     let table = env::var(ENV_TABLE).map_err(|_| format!("{ENV_TABLE} not set"))?;
     let key = env::var(ENV_KEY).map_err(|_| format!("{ENV_KEY} not set"))?;
 
-    lambda_runtime::run(service_fn(|_event: LambdaEvent<Value>| {
+    lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
         handle(&client, &table, &key)
     }))
     .await

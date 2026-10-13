@@ -21,6 +21,7 @@
 // (iterating bytes) do identical work and produce identical totals.
 
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const BUCKET = process.env.LAMBDABENCH_BUCKET;
 const OBJECT_KEY = process.env.LAMBDABENCH_LETTERCOUNT_KEY;
@@ -35,7 +36,8 @@ const payload = await (async () => {
   return out.Body.transformToString();
 })();
 
-export const handler = async () => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   // Parse (allocates a fresh object graph the GC must reclaim) then count lowercase
   // ASCII letters across all entries into 26 totals (index 0 = 'a' .. 25 = 'z').
   const arr = JSON.parse(payload);

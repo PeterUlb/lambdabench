@@ -73,9 +73,14 @@ async fn main() -> Result<(), Error> {
     let payload = String::from_utf8(bytes.to_vec())?;
     let state = State { payload };
 
-    lambda_runtime::run(service_fn(|_event: LambdaEvent<Value>| async {
-        let totals = count_letters(&state.payload)?;
-        Ok::<Value, Error>(json!({ "scenario": "lettercount", "letter_counts": totals }))
+    lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
+        async {
+            let totals = count_letters(&state.payload)?;
+            Ok::<Value, Error>(json!({ "scenario": "lettercount", "letter_counts": totals }))
+        }
     }))
     .await
 }

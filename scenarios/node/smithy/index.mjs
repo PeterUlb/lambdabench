@@ -9,6 +9,7 @@
 
 import { getCoffeeShopServiceHandler, OrderNotFound } from "@com.example/coffee-shop-server";
 import { convertEvent, convertResponse } from "@aws-smithy/server-apigateway";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 // CoffeeShop operation implementations. Only GetMenu is exercised by the
 // benchmark; the others satisfy the service contract. The `ctx` argument is the
@@ -32,7 +33,8 @@ const serviceHandler = getCoffeeShopServiceHandler(coffeeShop);
 // Shared context, constructed once at init and reused across warm invokes.
 const ctx = { requests: 0 };
 
-export const handler = async (event) => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   const httpRequest = convertEvent(event);
   const httpResponse = await serviceHandler.handle(httpRequest, ctx);
   return convertResponse(httpResponse);

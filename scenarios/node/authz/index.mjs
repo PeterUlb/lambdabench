@@ -25,6 +25,7 @@ import { importJWK, jwtVerify } from "jose";
 // fixture private key the token is signed with (see bencher/fixtures/README.md).
 // esbuild inlines this JSON import at bundle time.
 import PUBLIC_JWK from "../../../bencher/fixtures/authz_public_jwk.json" with { type: "json" };
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const EXPECTED_AUD = "lambdabench-gateway";
 const EXPECTED_ISS = "https://idp.lambdabench.example/";
@@ -87,7 +88,8 @@ function extractClaims(payload) {
   return extracted;
 }
 
-export const handler = async (event) => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   // The JWT arrives in the invoke payload as { token: "<jwt>" }.
   const token = event?.token;
   if (typeof token !== "string") {

@@ -18,6 +18,11 @@ _client = boto3.client("dynamodb", config=Config(retries={"total_max_attempts": 
 
 
 def handler(event, context):
+    # The bencher's unrecorded host-CPU invoke (see lambdabench_cpuinfo.py).
+    if context.client_context and (context.client_context.custom or {}).get("lambdabench") == "cpu":
+        import lambdabench_cpuinfo
+
+        lambdabench_cpuinfo.report()
     out = _client.get_item(TableName=TABLE, Key={"pk": {"S": KEY}})
     item = out.get("Item")
     # Fail loud if the seeded item is absent: a missing item means a broken

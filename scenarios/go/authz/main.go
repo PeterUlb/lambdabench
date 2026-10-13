@@ -37,6 +37,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // The public verification key, embedded at build time as a JWK. The bencher's
@@ -230,7 +231,8 @@ func mapToSet(value interface{}) interface{} {
 	return nil
 }
 
-func (s *state) handle(_ context.Context, e event) (response, error) {
+func (s *state) handle(ctx context.Context, e event) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	if e.Token == "" {
 		return response{}, fmt.Errorf("invoke payload missing string field 'token'")
 	}

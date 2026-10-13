@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // response is the constant payload, with the same fields and values as the
@@ -20,7 +21,8 @@ type response struct {
 	Scenario string `json:"scenario"`
 }
 
-func handler(_ context.Context) (response, error) {
+func handler(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	return response{Message: "hello", Scenario: "hello"}, nil
 }
 

@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use coffeeshop_server_sdk::server::{routing::LambdaHandler, AddExtensionLayer, Extension};
+use lambda_http::{tower::ServiceExt, RequestExt};
 use coffeeshop_server_sdk::{
     error, input,
     model::{CoffeeItem, CoffeeType},
@@ -85,7 +86,16 @@ async fn main() {
         .build()
         .expect("failed to build CoffeeShop service");
 
-    let handler = LambdaHandler::new(app);
+    // The bencher's unrecorded CPU invoke asks for the host CPU through the
+    // ClientContext (see lambdabench-cpuinfo); every other invoke passes straight on.
+    let handler = LambdaHandler::new(app).map_request(|req: lambda_http::Request| {
+        lambdabench_cpuinfo::report_if_requested(
+            req.lambda_context_ref()
+                .and_then(|c| c.client_context.as_ref())
+                .map(|c| &c.custom),
+        );
+        req
+    });
     if let Err(err) = lambda_http::run(handler).await {
         eprintln!("lambda error: {err}");
     }

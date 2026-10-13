@@ -113,6 +113,12 @@ public final class AuthzHandler implements RequestHandler<Map<String, Object>, M
 
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         Object token = event == null ? null : event.get("token");
         if (!(token instanceof String tokenStr) || tokenStr.isEmpty()) {
             throw new IllegalArgumentException("invoke payload missing string field 'token'");

@@ -421,6 +421,21 @@ The tail-vs-median charts and the read-in-absolute-ms rule are on
    isn't 200, or the `REPORT` line can't be parsed.
 5. **Serial within a function** (so warm invokes always hit the same warm sandbox), **parallel across
    functions** (independent functions never affect each other's sandboxes).
+6. **The host CPU is recorded, outside the measurement.** Lambda runs arm64 functions on several
+   Graviton generations, and in a probe the same cold start took about 30% longer on Graviton2 than
+   on Graviton4. After a cycle's recorded invokes, the driver sends one more, unrecorded invoke to
+   the same sandbox. That invoke asks the handler to log its CPU from `/proc/cpuinfo`: on arm64 the
+   part number, which tells Graviton2, 3 and 4 apart; on x86 the model name, which Firecracker,
+   Lambda's VM layer, reduces to a generic Intel Xeon name plus the host's nominal clock. The driver
+   stamps that CPU as `host_cpu` on every row of the cycle. The request travels in the invoke's
+   ClientContext, which recorded invokes do not carry, so their only extra work is checking for it.
+   The Java Smithy scenarios, whose Lambda handler is smithy-java's own, get it as a `GetOrder` of
+   a reserved id instead. If the extra invoke lands cold (a different sandbox), logs no CPU line or
+   fails, the cycle is kept without a host CPU. Until a cell has reported its first CPU, a missing
+   line or a failed invoke stops the cell instead, since it most likely means the deployed handler
+   is out of date. The shared code is `scenarios/rust/cpuinfo`, `scenarios/go/internal/cpuinfo`,
+   `scenarios/node/lib/cpuinfo.mjs`, `scenarios/python/lambdabench_cpuinfo.py` and
+   `scenarios/java/common`.
 
 ## Running a full sweep
 

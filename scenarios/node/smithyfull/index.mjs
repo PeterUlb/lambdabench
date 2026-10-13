@@ -10,6 +10,7 @@ import { KMSClient, EncryptCommand } from "@aws-sdk/client-kms";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCoffeeShopServiceHandler, OrderNotFound } from "@com.example/coffee-shop-server";
 import { convertEvent, convertResponse } from "@aws-smithy/server-apigateway";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const TABLE = process.env.LAMBDABENCH_TABLE;
 const KMS_KEY_ID = process.env.LAMBDABENCH_KMS_KEY_ID;
@@ -76,7 +77,8 @@ const coffeeShop = {
 
 const serviceHandler = getCoffeeShopServiceHandler(coffeeShop);
 
-export const handler = async (event) => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   const httpRequest = convertEvent(event);
   const httpResponse = await serviceHandler.handle(httpRequest, {});
   return convertResponse(httpResponse);

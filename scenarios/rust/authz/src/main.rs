@@ -175,6 +175,9 @@ async fn main() -> Result<(), Error> {
 
     let state = std::sync::Arc::new(state);
     lambda_runtime::run(service_fn(move |event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
         let state = state.clone();
         async move {
             // The JWT arrives in the invoke payload as { "token": "<jwt>" }.

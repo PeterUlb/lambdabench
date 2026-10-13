@@ -78,17 +78,22 @@ async fn main() -> Result<(), Error> {
     }
     let state = Mutex::new(State { live, rot: 0 });
 
-    lambda_runtime::run(service_fn(|_event: LambdaEvent<Value>| async {
-        let checksum = {
-            let mut st = state.lock().expect("cache state mutex poisoned");
-            churn_and_scan(&mut st)
-        };
-        Ok::<Value, Error>(json!({
-            "scenario": "cache",
-            "entries": ENTRIES,
-            "churned": CHURN,
-            "checksum": checksum,
-        }))
+    lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
+        async {
+            let checksum = {
+                let mut st = state.lock().expect("cache state mutex poisoned");
+                churn_and_scan(&mut st)
+            };
+            Ok::<Value, Error>(json!({
+                "scenario": "cache",
+                "entries": ENTRIES,
+                "churned": CHURN,
+                "checksum": checksum,
+            }))
+        }
     }))
     .await
 }

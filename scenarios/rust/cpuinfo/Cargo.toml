@@ -1,0 +1,11 @@
+[package]
+name = "lambdabench-cpuinfo"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# Shared by every Rust scenario: logs the host CPU when the bencher asks for it
+# through the invoke's ClientContext (see src/lib.rs). No dependencies, so it adds
+# nothing to a scenario's dependency graph.
+
+[dependencies]

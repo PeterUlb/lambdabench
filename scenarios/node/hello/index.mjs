@@ -4,6 +4,9 @@
 // runtime overhead differs.
 // Node 24 requires async handlers (callback style was removed).
 
-export const handler = async () => {
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
+
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   return { message: "hello", scenario: "hello" };
 };

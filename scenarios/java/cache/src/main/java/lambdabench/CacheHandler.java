@@ -83,6 +83,12 @@ public final class CacheHandler implements RequestHandler<Object, Map<String, Ob
 
     @Override
     public Map<String, Object> handleRequest(Object event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         long checksum = churnAndScan();
         Map<String, Object> result = new HashMap<>();
         result.put("scenario", "cache");

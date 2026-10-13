@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // Environment variables injected by the bencher at deploy time.
@@ -42,6 +43,7 @@ type response struct {
 
 // handle reads the seeded item by its partition key and returns its attributes.
 func (s *state) handle(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	out, err := s.ddb.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: &s.table,
 		Key:       map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: s.key}},

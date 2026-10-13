@@ -22,6 +22,14 @@ subprojects {
         }
     }
 
+    // CpuInfo (the bencher's host-CPU report) is compiled into every scenario
+    // from one shared source directory rather than a separate jar.
+    extensions.configure<SourceSetContainer> {
+        named("main") {
+            java.srcDir(rootDir.resolve("common/src/main/java"))
+        }
+    }
+
     dependencies {
         // The Lambda core types (RequestHandler, Context) are needed by every
         // handler, including the smithy-java LambdaEndpoint.

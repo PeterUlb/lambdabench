@@ -122,6 +122,12 @@ public final class BatchHandler implements RequestHandler<Object, Map<String, Ob
 
     @Override
     public Map<String, Object> handleRequest(Object event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         try {
             Record[] records = MAPPER.readValue(PAYLOAD, Record[].class);
             Map<String, Agg> groups = new HashMap<>();

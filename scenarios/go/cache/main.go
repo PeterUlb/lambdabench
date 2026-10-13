@@ -34,6 +34,7 @@ import (
 	"context"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 const (
@@ -85,7 +86,8 @@ func churnAndScan() uint64 {
 	return sum
 }
 
-func handle(_ context.Context) (response, error) {
+func handle(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	return response{
 		Scenario: "cache",
 		Entries:  entries,

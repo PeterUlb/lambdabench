@@ -27,6 +27,8 @@
 // the GC/allocator, not to compare Map implementations or hashing speed. No S3, no
 // AWS clients, no payload; fully self-contained.
 
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
+
 // Number of buffers in the retained live set.
 const ENTRIES = 200_000;
 // Bytes per buffer; ENTRIES * ENTRY_BYTES ≈ 100 MB of permanently-live heap.
@@ -62,7 +64,8 @@ function churnAndScan() {
   return sum;
 }
 
-export const handler = async () => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   return {
     scenario: "cache",
     entries: ENTRIES,

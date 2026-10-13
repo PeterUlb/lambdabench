@@ -1780,6 +1780,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambdabench-cpuinfo"
+version = "0.1.0"
+
+[[package]]
 name = "lambdabench-rust-smithyfull"
 version = "0.1.0"
 dependencies = [
@@ -1789,6 +1793,7 @@ dependencies = [
  "aws-sdk-s3",
  "coffeeshop_server_sdk",
  "lambda_http",
+ "lambdabench-cpuinfo",
  "tokio",
 ]
 

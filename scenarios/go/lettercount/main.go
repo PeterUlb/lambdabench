@@ -33,6 +33,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // Environment variables injected by the bencher at deploy time.
@@ -75,7 +76,8 @@ func countLetters(payload []byte) ([26]uint64, error) {
 	return totals, nil
 }
 
-func (s *state) handle(_ context.Context) (response, error) {
+func (s *state) handle(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	totals, err := countLetters(s.payload)
 	if err != nil {
 		return response{}, err

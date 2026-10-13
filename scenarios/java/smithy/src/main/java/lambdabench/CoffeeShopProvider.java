@@ -81,6 +81,17 @@ public final class CoffeeShopProvider implements SmithyServiceProvider {
 
     /** Stub for the same reason as createOrder. */
     private static GetOrderOutput getOrder(GetOrderInput input, RequestContext context) {
+        // The bencher's unrecorded host-CPU invoke: smithy-java owns the Lambda
+        // handler, so the request carries the flag as a reserved order id (see
+        // CpuInfo). Recorded invokes never call GetOrder.
+        if (CpuInfo.SMITHY_ORDER_ID.equals(input.getId())) {
+            CpuInfo.report();
+            return GetOrderOutput.builder()
+                    .id(input.getId())
+                    .coffeeType(CoffeeType.LATTE)
+                    .status(OrderStatus.COMPLETED)
+                    .build();
+        }
         throw OrderNotFound.builder()
                 .message("not implemented in benchmark")
                 .build();

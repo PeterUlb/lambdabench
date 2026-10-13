@@ -824,11 +824,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambdabench-cpuinfo"
+version = "0.1.0"
+
+[[package]]
 name = "lambdabench-rust-smithy"
 version = "0.1.0"
 dependencies = [
  "coffeeshop_server_sdk",
  "lambda_http",
+ "lambdabench-cpuinfo",
  "tokio",
 ]
 

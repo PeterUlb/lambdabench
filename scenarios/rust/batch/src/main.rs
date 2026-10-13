@@ -117,8 +117,11 @@ async fn main() -> Result<(), Error> {
     let payload = String::from_utf8(bytes.to_vec())?;
     let state = State { payload };
 
-    lambda_runtime::run(service_fn(|_event: LambdaEvent<Value>| async {
-        process_batch(&state.payload)
+    lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
+        lambdabench_cpuinfo::report_if_requested(
+            event.context.client_context.as_ref().map(|c| &c.custom),
+        );
+        async { process_batch(&state.payload) }
     }))
     .await
 }

@@ -64,6 +64,12 @@ public final class LetterCountHandler implements RequestHandler<Object, Map<Stri
 
     @Override
     public Map<String, Object> handleRequest(Object event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         long[] totals = countLetters(PAYLOAD);
         Map<String, Object> result = new HashMap<>();
         result.put("scenario", "lettercount");

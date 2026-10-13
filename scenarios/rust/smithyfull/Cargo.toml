@@ -16,6 +16,7 @@ name = "bootstrap"
 path = "src/main.rs"
 
 [dependencies]
+lambdabench-cpuinfo = { path = "../cpuinfo" }
 # lambda_http MUST match what aws-smithy-http-server 0.65.x pins (^0.8.4).
 lambda_http = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

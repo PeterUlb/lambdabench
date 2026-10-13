@@ -4,6 +4,7 @@
 // for a fair comparison with Rust's statically linked SDK.
 
 import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const TABLE = process.env.LAMBDABENCH_TABLE;
 const KEY = process.env.LAMBDABENCH_KEY;
@@ -13,7 +14,8 @@ const KEY = process.env.LAMBDABENCH_KEY;
 // Duration.
 const client = new DynamoDBClient({ maxAttempts: 1 });
 
-export const handler = async () => {
+export const handler = async (event, context) => {
+  reportIfRequested(context);
   const out = await client.send(
     new GetItemCommand({
       TableName: TABLE,

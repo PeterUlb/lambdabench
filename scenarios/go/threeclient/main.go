@@ -23,6 +23,7 @@ import (
 	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/lambdabench/go-artifacts/internal/cpuinfo"
 )
 
 // Environment variables injected by the bencher at deploy time.
@@ -56,6 +57,7 @@ type response struct {
 // handle calls DynamoDB GetItem, KMS Encrypt, and S3 GetObject, returning a
 // small summary so the benchmark can confirm all three succeeded.
 func (s *state) handle(ctx context.Context) (response, error) {
+	cpuinfo.ReportIfRequested(ctx)
 	// 1. DynamoDB GetItem.
 	ddbOut, err := s.ddb.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: &s.table,

@@ -29,7 +29,7 @@ const v = C.makeView(stats, sel, invalidation);
 
 ## Cold vs warm distribution
 
-<div class="chart-sub">Each dot is one invocation (the dense body is down-sampled, but every tail outlier at or above P98 is kept); ticks mark each series' cold and warm medians, computed from the full data. Selecting a memory tier rescales the x-axis, since latency ranges differ widely across memory. Separate clusters within one arm64 cold series can come from different host CPUs. Lambda runs arm64 functions on several Graviton generations, and in a probe the oldest took about 30% longer than the newest on the same cold start (<a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>).</div>
+<div class="chart-sub">Each dot is one invocation (the dense body is down-sampled, but every tail outlier at or above P98 is kept); ticks mark each series' cold and warm medians, computed from the full data. Selecting a memory tier rescales the x-axis, since latency ranges differ widely across memory. Separate clusters within one arm64 cold series can come from different host CPUs (see <a href="#host-cpus">Host CPUs</a>).</div>
 
 ```js
 // One tier at a time: the scatter is the heaviest view, so render only the
@@ -44,6 +44,54 @@ const distMem = view(
 
 ```js
 display(C.distribution(v, distMem));
+```
+
+## Host CPUs
+
+<div class="chart-sub">Which host CPUs this run's cold starts ran on, per architecture. Lambda chooses the host per execution environment, and on arm64 it mixes Graviton generations. In a probe those differed by about 30% on the same cold start (<a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>), so this mix is part of what every arm64 percentile on this page measures. The table covers the whole run and ignores the filters above. Each cycle's handler reports its CPU from <code>/proc/cpuinfo</code> on an extra invoke after the measured ones, so the reporting itself is not in any timing.</div>
+
+```js
+// One row per (architecture, CPU), counted over cold starts: each cycle is one
+// sandbox on one host. Runs recorded before the bencher logged the CPU have none.
+const hostCpu = stats.hostCpu;
+display(
+  hostCpu == null
+    ? html`<p class="chart-sub">
+        This run predates host CPU recording; runs from now on include it.
+      </p>`
+    : html`<table class="summary">
+          <thead>
+            <tr>
+              <th>Architecture</th>
+              <th>Host CPU</th>
+              <th>Cold starts</th>
+              <th>Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(hostCpu.byArch).flatMap(([arch, list]) =>
+              list.map(
+                (c) =>
+                  html`<tr>
+                    <td>${arch}</td>
+                    <td>${c.label}</td>
+                    <td>${c.n.toLocaleString()}</td>
+                    <td>${(c.share * 100).toFixed(1)}%</td>
+                  </tr>`,
+              ),
+            )}
+          </tbody>
+        </table>
+        ${
+          hostCpu.missing > 0
+            ? html`<p class="chart-sub">
+                ${hostCpu.missing.toLocaleString()} of
+                ${(hostCpu.recorded + hostCpu.missing).toLocaleString()} cold
+                starts have no recorded host CPU and are not counted above.
+              </p>`
+            : ""
+        }`,
+);
 ```
 
 ## Full percentiles, by scenario

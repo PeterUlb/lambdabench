@@ -72,6 +72,12 @@ public final class OneClientHandler implements RequestHandler<Object, Map<String
 
     @Override
     public Map<String, Object> handleRequest(Object event, Context context) {
+        // The bencher's unrecorded host-CPU invoke (see CpuInfo).
+        if (context != null && context.getClientContext() != null
+                && context.getClientContext().getCustom() != null
+                && "cpu".equals(context.getClientContext().getCustom().get("lambdabench"))) {
+            CpuInfo.report();
+        }
         GetItemResponse out = DDB.getItem(b -> b.tableName(TABLE)
                 .key(Map.of("pk", AttributeValue.fromS(KEY))));
         // Fail loud if the seeded item is absent: a missing item means a broken
