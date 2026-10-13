@@ -15,9 +15,11 @@ members = [
 # scenarios/rust/smithy and scenarios/rust/smithyfull are intentionally excluded:
 # both depend on a server SDK that only exists after `gradlew` codegen (smithyfull
 # reuses the one generated under smithy), so each is its own self-contained cargo
-# project built by the `build` subcommand after codegen runs. .tmp is local scratch
-# space (see .gitignore), not part of the workspace.
-exclude = ["scenarios/rust/smithy", "scenarios/rust/smithyfull", ".tmp"]
+# project built by the `build` subcommand after codegen runs. oneoff/rust-sdk-tuning
+# is standalone so it can resolve the newest SDK and toggle the SDK crates' default
+# features without touching the matrix's lock. .tmp is local scratch space (see
+# .gitignore), not part of the workspace.
+exclude = ["scenarios/rust/smithy", "scenarios/rust/smithyfull", "oneoff/rust-sdk-tuning", ".tmp"]
 
 # Left at Cargo's defaults on purpose. `release` covers the whole workspace,
 # including the `bencher` driver (built via `cargo run --release`). Bencher is

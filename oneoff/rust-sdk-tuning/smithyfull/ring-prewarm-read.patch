@@ -1,0 +1,90 @@
+--- scenarios/rust/smithyfull/Cargo.toml
++++ smithyfull-tuned-ring/Cargo.toml
+@@ -1,5 +1,5 @@
+ [package]
+-name = "lambdabench-rust-smithyfull"
++name = "smithyfull-tuned-ring"
+ version = "0.1.0"
+ edition = "2024"
+ license = "Apache-2.0"
+@@ -20,13 +20,14 @@
+ lambda_http = "0.8"
+ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+ 
+-aws-config = "1"
+-aws-sdk-dynamodb = "1"
+-aws-sdk-kms = "1"
+-aws-sdk-s3 = "1"
++aws-config = { version = "1", default-features = false, features = ["rt-tokio"] }
++aws-sdk-dynamodb = { version = "1", default-features = false, features = ["rt-tokio"] }
++aws-sdk-kms = { version = "1", default-features = false, features = ["rt-tokio"] }
++aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "http-1x"] }
++aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
+ 
+ # Generated server SDK (shared with the `smithy` scenario), Lambda adapter on.
+ coffeeshop_server_sdk = { path = "../smithy/server/build/smithyprojections/server/source/rust-server-codegen", features = ["aws-lambda"] }
+ 
+ # Standalone crate (excluded from the root workspace, depends on generated
+ # code). Declare the same optimizations as the rest of the Rust matrix, under the
+@@ -38,3 +39,4 @@
+ opt-level = 3
+ strip = true
+ panic = "abort"
++[workspace]
+--- scenarios/rust/smithyfull/src/main.rs
++++ smithyfull-tuned-ring/src/main.rs
+@@ -145,10 +145,24 @@
+ 
+ #[tokio::main]
+ async fn main() {
++    // Tuning probe: SF_PREFAULT=1 reads the executable once so its pages are
++    // in the page cache before the rest of init runs.
++    if std::env::var("SF_PREFAULT").as_deref() == Ok("1") {
++        if let Ok(mut exe) = std::fs::File::open("/proc/self/exe") {
++            let _ = std::io::copy(&mut exe, &mut std::io::sink());
++        }
++    }
+     // Init phase: resolve config once, build all three clients into shared state.
+     // Retries disabled: a throttle/transient must surface as a hard failure, not
+     // be silently retried into an inflated Duration.
++    // Tuning probe: rustls on ring, passed to the loader as the HTTP client.
++    let http = aws_smithy_http_client::Builder::new()
++        .tls_provider(aws_smithy_http_client::tls::Provider::Rustls(
++            aws_smithy_http_client::tls::rustls_provider::CryptoMode::Ring,
++        ))
++        .build_https();
+     let aws = aws_config::defaults(aws_config::BehaviorVersion::latest())
++        .http_client(http)
+         .retry_config(aws_config::retry::RetryConfig::disabled())
+         .load()
+         .await;
+@@ -163,6 +177,29 @@
+         receipt_key: std::env::var(ENV_RECEIPT_KEY).expect("LAMBDABENCH_RECEIPT_KEY not set"),
+     });
+ 
++    // Tuning probe: SF_PREWARM=1 makes one real, side-effect-free call per
++    // client at init, concurrently, so DNS, the TLS handshakes and the code
++    // they touch run in Init instead of the first request.
++    if std::env::var("SF_PREWARM").as_deref() == Ok("1") {
++        let s = &state;
++        let (kms, ddb, _s3) = tokio::join!(
++            s.kms
++                .encrypt()
++                .key_id(&s.kms_key_id)
++                .plaintext(aws_sdk_kms::primitives::Blob::new(b"prewarm".to_vec()))
++                .send(),
++            s.ddb
++                .get_item()
++                .table_name(&s.table)
++                .key("pk", AttributeValue::S(s.order_pk.clone()))
++                .send(),
++            // 404 when no receipt exists yet; the connection is still open.
++            s.s3.head_object().bucket(&s.bucket).key(&s.receipt_key).send(),
++        );
++        kms.expect("prewarm KMS");
++        ddb.expect("prewarm DynamoDB");
++    }
++
+     let config = CoffeeShopConfig::builder()
+         .layer(AddExtensionLayer::new(state))
+         .build();

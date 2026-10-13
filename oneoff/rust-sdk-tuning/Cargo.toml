@@ -1,0 +1,69 @@
+[package]
+name = "oneoff-rust-sdk-tuning"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# One-off probe behind the Rust SDK levers on site/src/tuning.md. Not part of the
+# benchmark matrix; see README.md here. Standalone (excluded from the root
+# workspace) so it resolves the newest SDK in its own Cargo.lock and can turn the
+# SDK crates' default features off, which a workspace member sharing the root
+# lock with the scenarios could not do independently.
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+lambda_runtime = "1"
+serde_json = "1"
+libc = "0.2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+aws-config = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-credential-types = "1"
+aws-sdk-dynamodb = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-kms = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-smithy-http-client = { version = "1", optional = true }
+aws-smithy-runtime-api = { version = "1", features = ["client"] }
+mimalloc = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["fmt", "env-filter"] }
+
+[features]
+default = ["sdk-defaults"]
+# The SDK crates' own default features, as the matrix scenarios use them.
+sdk-defaults = [
+    "aws-config/default",
+    "aws-sdk-dynamodb/default",
+    "aws-sdk-kms/default",
+    "aws-sdk-s3/default",
+]
+# Only the hyper 1.x + rustls/aws-lc client: drops SSO, credential_process, the
+# legacy hyper 0.14 client and S3's SigV4a.
+slim = [
+    "aws-config/default-https-client",
+    "aws-sdk-dynamodb/default-https-client",
+    "aws-sdk-kms/default-https-client",
+    "aws-sdk-s3/default-https-client",
+    "aws-sdk-s3/http-1x",
+]
+# S3's SigV4a default feature on top of `slim`, to isolate its cost.
+sigv4a = ["aws-sdk-s3/sigv4a"]
+# ~2 MiB of incompressible data the process never reads (unless
+# PROBE_PAD_TOUCH is set): file size without touched pages.
+pad = []
+# rustls on ring instead of aws-lc, passed to the loader as an explicit client.
+ring = ["dep:aws-smithy-http-client", "aws-smithy-http-client/rustls-ring", "aws-sdk-s3/http-1x"]
+mimalloc = ["dep:mimalloc"]
+# Timestamped SDK tracing to CloudWatch; diagnostic runs only, it adds its own cost.
+diag = ["dep:tracing-subscriber"]
+
+[profile.lambda]
+# Same as the matrix's [profile.lambda] in the root Cargo.toml.
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+panic = "abort"

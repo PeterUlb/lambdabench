@@ -1,0 +1,63 @@
+--- scenarios/rust/smithyfull/Cargo.toml
++++ sf-cnt-new/Cargo.toml
+@@ -1,5 +1,5 @@
+ [package]
+-name = "lambdabench-rust-smithyfull"
++name = "sf-cnt-new"
+ version = "0.1.0"
+ edition = "2024"
+ license = "Apache-2.0"
+@@ -19,6 +19,7 @@
+ lambdabench-cpuinfo = { path = "../cpuinfo" }
+ # lambda_http MUST match what aws-smithy-http-server 0.65.x pins (^0.8.4).
+ lambda_http = "0.8"
++libc = "0.2"
+ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+ 
+ aws-config = "1"
+@@ -39,3 +40,4 @@
+ opt-level = 3
+ strip = true
+ panic = "abort"
++[workspace]
+--- scenarios/rust/smithyfull/src/main.rs
++++ sf-cnt-new/src/main.rs
+@@ -12,6 +12,8 @@
+ 
+ use std::sync::Arc;
+ 
++mod probe_counters;
++
+ use aws_sdk_dynamodb::types::AttributeValue;
+ use coffeeshop_server_sdk::server::{routing::LambdaHandler, AddExtensionLayer, Extension};
+ use lambda_http::{tower::ServiceExt, RequestExt};
+@@ -136,6 +138,7 @@
+     run_work(&state, &coffee)
+         .await
+         .expect("smithyfull AWS write flow failed");
++    probe_counters::report();
+     Ok(output::CreateOrderOutput {
+         id: model::Uuid::try_from("00000000-0000-0000-0000-000000000000".to_string())
+             .expect("valid uuid"),
+@@ -146,6 +149,13 @@
+ 
+ #[tokio::main]
+ async fn main() {
++    // Tuning probe: SF_PREFAULT=1 reads the executable once so its pages are
++    // in the page cache before the rest of init runs.
++    if std::env::var("SF_PREFAULT").as_deref() == Ok("1") {
++        if let Ok(mut exe) = std::fs::File::open("/proc/self/exe") {
++            let _ = std::io::copy(&mut exe, &mut std::io::sink());
++        }
++    }
+     // Init phase: resolve config once, build all three clients into shared state.
+     // Retries disabled: a throttle/transient must surface as a hard failure, not
+     // be silently retried into an inflated Duration.
+@@ -185,6 +195,7 @@
+         );
+         req
+     });
++    probe_counters::mark_init();
+     if let Err(err) = lambda_http::run(handler).await {
+         eprintln!("lambda error: {err}");
+     }
