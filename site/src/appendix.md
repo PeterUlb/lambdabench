@@ -29,7 +29,7 @@ const v = C.makeView(stats, sel, invalidation);
 
 ## Cold vs warm distribution
 
-<div class="chart-sub">Each dot is one invocation (the dense body is down-sampled, but every tail outlier at or above P98 is kept); ticks mark each series' cold and warm medians, computed from the full data. Selecting a memory tier rescales the x-axis, since latency ranges differ widely across memory.</div>
+<div class="chart-sub">Each dot is one invocation (the dense body is down-sampled, but every tail outlier at or above P98 is kept); ticks mark each series' cold and warm medians, computed from the full data. Selecting a memory tier rescales the x-axis, since latency ranges differ widely across memory. Separate clusters within one arm64 cold series can come from different host CPUs. Lambda runs arm64 functions on several Graviton generations, and in a probe the oldest took about 30% longer than the newest on the same cold start (<a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>).</div>
 
 ```js
 // One tier at a time: the scatter is the heaviest view, so render only the

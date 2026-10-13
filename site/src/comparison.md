@@ -115,6 +115,8 @@ display(C.artifactSize(v));
 display(archWinRate(v));
 ```
 
+<div class="chart-sub"><strong>The arm64 side is a mix of CPU generations.</strong> Lambda ran the same arm64 function on Graviton2, Graviton3 and Graviton4 hosts, chosen per execution environment, and in a one-off probe the generation alone moved a Rust cold start by up to ~25%. The cold Init times in this run show the same three groups, mostly the middle one, so each arm64 cell compares the mix this run drew, in this region, against x86_64; a different mix would move the cold margins. The x86_64 hosts were not uniform either, but varied less. Details: <a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>.</div>
+
 ```js
 // The per-cell detail behind the win-rate above: one dumbbell row per scenario ×
 // memory. It is dense and the table above already summarizes it, so it is

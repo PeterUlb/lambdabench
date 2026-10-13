@@ -848,7 +848,10 @@ call with static credentials takes ~0.1 ms, so that ~17 ms is a one-time cost of
 setup code for the first time (the probes do not break it down further). With that paid, building
 the default HTTPS client and credential provider chain takes ~38 ms (the chain is ~3 ms of it,
 going by the no-op vs static first calls), and ~30 ms is loading and parsing the OS root
-certificates; the rest is the TLS/connector assembly. Constructing the `aws-lc-rs` crypto provider
+certificates; the rest is the TLS/connector assembly. That was `rustls-native-certs` 0.8.4;
+0.8.5, in the benchmark's lockfile since 2026-10, reads each certificate file only once and
+took ~11 ms off it
+([load root certificates from the CA bundle](./tuning#load-root-certificates-from-the-ca-bundle)). Constructing the `aws-lc-rs` crypto provider
 is negligible (~0.001 ms in the 2026-07 probes); that is separate from the one-time RNG **seeding**
 the [jitter-entropy panel](./rust#the-aws-lc-rs-jitter-entropy-cold-start-tax) measures, which fires
 later on the first TLS handshake and is switched off in these probes via
@@ -873,7 +876,10 @@ cert store, TLS session and credentials are all warm by then), so the 1st call m
 isolates the one-time setup the first request had to do. For Go that is ~1.3 s, paid in the handler
 at the tier's ordinary CPU. Rust's first call is only ~113 ms because it already built the client
 and cert store at init; the ~107 ms it still pays on call one is mostly the unavoidable first TLS
-handshake, which neither SDK performs before the first request.
+handshake, which neither SDK performs before the first request. Most of Go's share is the root
+certificates: on `provided.al2023` Go also scans both certificate directories, and skipping that
+scan took ~775 ms off a 128 MB first request in a later probe
+([skip the certificate directory scan](./tuning#skip-the-certificate-directory-scan)).
 
 So the boost does not make Rust cheaper _at the work_; it lets Rust do the same expensive setup in
 the one window where 128 MB gets a full vCPU, while Go does near-identical work an order of
@@ -977,6 +983,19 @@ crash costs more, as covered on the [SnapStart page](./java-snapstart#after-a-cr
   That is representative of well-written handlers, but it means a cold gap at 128 or 256 MB
   partly reflects _where_ each runtime places its setup, not only how fast it runs. The gap is
   expected to narrow at higher tiers.
+- **arm64 runs on more than one CPU generation.** In a one-off probe (2026-10), Lambda placed the
+  same arm64 function on Graviton2, Graviton3 and Graviton4 hosts, chosen per execution
+  environment, and the generation alone moved a Rust `smithyfull` cold start at 128 MB between
+  ~292 ms (Graviton4) and ~401 ms (Graviton2). The mix differed by region and is not under the
+  function's control, so each arm64 cold percentile here blends whatever mix the run drew, and a
+  rerun on a different mix can shift it. AWS does not document which generations Lambda uses.
+  The published run shows the same pattern without recording the CPU: Rust `smithyfull`'s 50
+  cold `Init Duration`s at 128 MB arm64 fall into three groups, 3 near ~77 ms, 39 near ~95 ms and
+  8 near ~121 ms, in about the ratio the probe measured between Graviton4, 3 and 2. The P50 is
+  therefore the most common generation's value, and part of the cold P90 is the host, not the
+  runtime. The x86_64 cells show a smaller second group too (6 of 50 near ~124 ms against ~145 ms),
+  so x86_64 hosts are not uniform either. Details: [cold-start tuning](./tuning), under "How
+  these numbers were measured".
 - **For a handler where cold start matters below ~1.8 GB.** Setup work runs faster at init
   than on the first request (for a lazy SDK, that can require a small real call, not just
   constructing a client), and a higher memory tier runs the phases on comparable CPU. Neither

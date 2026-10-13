@@ -115,11 +115,13 @@ README Findings):
 
 4. **All Rust scenarios compile with identical optimizations** (fat LTO,
    codegen-units=1, stripped, panic=abort, and
-   `AWS_LC_SYS_NO_JITTER_ENTROPY=1`: the flag-set baseline). Most of these are cargo-lambda's own
+   `AWS_LC_SYS_NO_JITTER_ENTROPY=1`: the flag-set baseline). Most of these mirror cargo-lambda's own
    [release optimizations](https://www.cargo-lambda.info/guide/release-optimizations.html)
-   (symbols stripped, `panic=abort`, `codegen-units=1`, plus the Neoverse-N1 /
-   Haswell `target-cpu` tuning it applies via rustflags; see that page for
-   what each does and why). We leave those on and deviate in one place: LTO is
+   (symbols stripped, `panic=abort`, `codegen-units=1`; see that page for what
+   each does and why). cargo-lambda applies those, plus a Neoverse-N1 / Haswell
+   `target-cpu`, only to the `release` profile; the `lambda` profile used here
+   sets them itself and adds no `target-cpu`, so the binaries target each
+   architecture's generic baseline CPU. We deviate in one place: LTO is
    upgraded from cargo-lambda's default `lto="thin"` to **`fat`**, trading
    longer compile time for a more optimized binary, applied identically to
    every Rust cell so the o3-vs-oz and cross-language comparisons stay fair.
