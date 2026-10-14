@@ -10,7 +10,7 @@
 #   Node 24 + npm        (esbuild bundling; also builds the site)
 #   JDK 25               (scenarios/java targets JavaLanguageVersion 25)
 #   Python 3.14 + pip    (pip install --target per scenario/arch)
-#   Go 1.26              (scenarios/go go.mod)
+#   Go 1.27              (scenarios/go go.mod)
 #   awscli v2            (site sync + CloudFront invalidation in the publish step)
 #   crane                (daemonless OCI push for the zip-vs-image probe family)
 #
@@ -61,11 +61,11 @@ RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
     && rm -rf /var/lib/apt/lists/*
 ENV JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64
 
-# --- Go 1.26 -----------------------------------------------------------------
+# --- Go 1.27 -----------------------------------------------------------------
 # Version + sha256 pinned so a rebuild produces the same toolchain; bump both
 # together (the checksum is listed next to the file on https://go.dev/dl/).
-ARG GO_VERSION=1.26.9
-ARG GO_SHA256=42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d
+ARG GO_VERSION=1.27.2
+ARG GO_SHA256=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz \
     && echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c - \
     && tar -C /usr/local -xzf /tmp/go.tgz \

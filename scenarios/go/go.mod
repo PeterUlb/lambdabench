@@ -1,6 +1,8 @@
 module github.com/lambdabench/go-artifacts
 
-go 1.26
+go 1.27
+
+toolchain go1.27.2
 
 require (
 	github.com/aws/aws-lambda-go v1.55.1

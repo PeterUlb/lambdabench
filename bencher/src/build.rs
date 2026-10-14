@@ -166,7 +166,9 @@ pub fn build_all(
             "node": tool_version(Command::new("node").arg("--version")),
             "python": tool_version(Command::new("python3").arg("--version")),
             "pip": tool_version(Command::new("python3").args(["-m", "pip", "--version"])),
-            "go": tool_version(Command::new("go").arg("version")),
+            // Inside the module, so a `toolchain` line in go.mod picks the version
+            // that actually builds the binaries (GOTOOLCHAIN=auto may download it).
+            "go": tool_version(Command::new("go").arg("version").current_dir(repo_root.join("scenarios/go"))),
             // `java --version` (double dash) prints to stdout on JDK 9+, unlike
             // the legacy `-version` which goes to stderr.
             "java": tool_version(Command::new("java").arg("--version")),
