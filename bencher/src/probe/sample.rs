@@ -191,6 +191,68 @@ pub(super) async fn take_sample(
     })
 }
 
+/// The warm wait without the log tail: wall-clock percentiles of
+/// `LogType=None` invokes (no log tail).
+pub(super) struct CallerWarm {
+    pub(super) n: u32,
+    pub(super) p50: f64,
+    pub(super) p90: f64,
+    pub(super) p99: f64,
+    pub(super) min: f64,
+    pub(super) max: f64,
+}
+
+/// Times `n` back-to-back `LogType=None` warm invokes of `name` on the
+/// retry-disabled client, wrapped in `retry_transient` (a transient error re-takes
+/// the whole block, buffer-then-commit like the cold series).
+///
+/// Run right after the cell's cold series, whose tailed warm invokes left a warm
+/// sandbox. Without a `REPORT` these invokes carry no `Duration` and cannot be
+/// confirmed warm: a sandbox re-placed mid-block lands in the block as a slow
+/// outlier, which is what any caller sending one request at a time would see. The
+/// front-end lump and the tail's price are derived downstream from the
+/// trivial-handler cells, where `Duration` is negligible (see lifecycle.md).
+pub(super) async fn sample_caller_warm(
+    aws: &Aws,
+    timed: &aws_sdk_lambda::Client,
+    name: &str,
+    payload: &str,
+    http_fronted: bool,
+    n: u32,
+) -> Result<CallerWarm> {
+    super::retry_transient(name, || async {
+        let mut walls = Vec::with_capacity(n as usize);
+        for _ in 0..n {
+            let (res, w) = aws
+                .invoke_no_tail_timed_by_name(timed, name, payload)
+                .await?;
+            check_ok(name, http_fronted, &res)?;
+            walls.push(w.as_secs_f64() * 1000.0);
+        }
+        let (min, max) = spread(&walls);
+        Ok(CallerWarm {
+            n,
+            p50: median(&mut walls),
+            p90: percentile(&mut walls, 0.90),
+            p99: percentile(&mut walls, 0.99),
+            min,
+            max,
+        })
+    })
+    .await
+}
+
+/// Nearest-rank percentile (sorts in place), `q` in (0, 1]: the smallest sample
+/// with at least `q` of the samples at or below it. No interpolation, so the
+/// result is always an observed value. Panics on an empty slice, like `median`.
+pub(super) fn percentile(v: &mut [f64], q: f64) -> f64 {
+    assert!(!v.is_empty(), "percentile of empty sample set");
+    assert!(q > 0.0 && q <= 1.0, "percentile q must be in (0, 1]");
+    v.sort_by(|a, b| a.partial_cmp(b).expect("no NaN in timing samples"));
+    let rank = (q * v.len() as f64).ceil() as usize;
+    v[rank.max(1) - 1]
+}
+
 /// Takes `cold_samples` cold samples for `name`, wrapped in `retry_transient` so
 /// a transient hard error re-runs the whole batch (buffer-then-commit) rather
 /// than leaving a partially-sampled result.
@@ -296,6 +358,23 @@ mod tests {
         assert_eq!(median(&mut [4.0, 1.0, 3.0, 2.0]), 2.5);
         // Unsorted input with a duplicate straddling the midpoint.
         assert_eq!(median(&mut [10.0, 2.0, 2.0, 8.0, 6.0]), 6.0);
+    }
+
+    /// Nearest-rank percentile: always an observed value, p99 of 100 samples is
+    /// the 99th smallest, and small sets collapse to the max. Input order does
+    /// not matter.
+    #[test]
+    fn percentile_nearest_rank() {
+        let mut v: Vec<f64> = (1..=100).rev().map(f64::from).collect();
+        assert_eq!(percentile(&mut v, 0.50), 50.0);
+        assert_eq!(percentile(&mut v, 0.90), 90.0);
+        assert_eq!(percentile(&mut v, 0.99), 99.0);
+        assert_eq!(percentile(&mut v, 1.0), 100.0);
+        // 7 samples: ceil(0.99 * 7) = 7 -> the max; ceil(0.5 * 7) = 4 -> the middle.
+        let mut small = [7.0, 1.0, 5.0, 3.0, 2.0, 6.0, 4.0];
+        assert_eq!(percentile(&mut small, 0.99), 7.0);
+        assert_eq!(percentile(&mut small, 0.50), 4.0);
+        assert_eq!(percentile(&mut [42.0], 0.99), 42.0);
     }
 
     /// `aggregate` reduces each per-sample term to its own median and reports the

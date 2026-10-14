@@ -2,10 +2,12 @@
 //! ALREADY-DEPLOYED matrix functions (deploys nothing). Resolves the matrix
 //! targets across three axes (memory, artifact size, language), samples each with
 //! the shared measurement core, and writes the run-scoped download+start table
-//! JSON the site's data loader discovers at build time.
+//! JSON the site's data loader discovers at build time. Each cell also gets a
+//! production-caller block: `--caller-warm` warm invokes WITHOUT the log tail,
+//! whose wall-clock percentiles are the warm wait a caller in production sees.
 
 use super::ProbeCommon;
-use super::sample::{Sample, aggregate, sample_cold_series};
+use super::sample::{CallerWarm, Sample, aggregate, sample_caller_warm, sample_cold_series};
 use crate::aws::Aws;
 use crate::config::{self, Arch, Cell, Lang, Scenario};
 use anyhow::{Context, Result, bail};
@@ -26,6 +28,14 @@ pub(super) struct DownloadStartArgs {
     /// Omit to use the per-axis defaults.
     #[arg(long, value_delimiter = ',', num_args = 1..)]
     memory: Vec<i32>,
+    /// Production-caller warm invokes per cell, sent with `LogType=None` (no log
+    /// tail) after the cold series, so their wall-clock is the warm wait a caller
+    /// in production sees, published as p50/p90/p99. The decomposition's warm invokes
+    /// must ask for the tail to read `Duration`, which costs a few ms the
+    /// subtraction cancels and a caller in production does not incur. Kept in the
+    /// hundreds so p99 is measured rather than the max of a handful. Must be >= 1.
+    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(1..))]
+    caller_warm: u32,
     /// Output path override. Omit to write a run-scoped, timestamped file under
     /// the repo-root `results/` dir (`results/lifecycle-download-start-<run_id>.json`),
     /// gitignored like the matrix runs and discovered by the site at build time.
@@ -60,6 +70,12 @@ struct CellResult {
     residual_p50: f64,
     residual_min: f64,
     residual_max: f64,
+    /// Production-caller warm wait (`LogType=None`), over `n_caller_warm` invokes.
+    caller_warm_p50: f64,
+    caller_warm_p90: f64,
+    caller_warm_p99: f64,
+    caller_warm_min: f64,
+    caller_warm_max: f64,
 }
 
 /// Top-level probe output written to the run-scoped `results/` JSON.
@@ -69,6 +85,7 @@ struct ProbeOutput {
     region: String,
     note: String,
     n_warm_per_sample: u32,
+    n_caller_warm: u32,
     cells: Vec<CellResult>,
 }
 
@@ -176,10 +193,11 @@ pub(super) async fn run_download_start(
         config::REGION
     );
     println!(
-        "targets: {} cell(s), {} cold sample(s) x (1 prewarm + 1 cold + {} warm) each",
+        "targets: {} cell(s), {} cold sample(s) x (1 prewarm + 1 cold + {} warm) + {} no-tail caller warm each",
         targets.len(),
         args.common.cold_samples,
-        args.common.warm_per_sample
+        args.common.warm_per_sample,
+        args.caller_warm
     );
 
     // Preflight: every target must already be deployed. Checks each by exact name
@@ -218,11 +236,24 @@ pub(super) async fn run_download_start(
             args.common.warm_per_sample,
         )
         .await?;
+        let caller = sample_caller_warm(
+            &aws,
+            &timed,
+            &name,
+            &crate::aws::lambda::invoke_payload(cell),
+            cell.scenario.is_http_fronted(),
+            args.caller_warm,
+        )
+        .await?;
+        println!(
+            "   caller warm (no log tail, n={}): p50={:.1} p90={:.1} p99={:.1} max={:.1} ms",
+            caller.n, caller.p50, caller.p90, caller.p99, caller.max,
+        );
 
         let sz = sizes
             .get(&name)
             .expect("size resolved for every probe cell above");
-        results.push(aggregate_cell(cell, sz.zip, sz.unzipped, &samples));
+        results.push(aggregate_cell(cell, sz.zip, sz.unzipped, &samples, &caller));
     }
 
     let out = ProbeOutput {
@@ -233,9 +264,14 @@ pub(super) async fn run_download_start(
                (mostly download + environment start, plus a small scheduling/placement remainder \
                the warm-RTT subtraction does not cancel; all of it invisible to the REPORT line). \
                w_cold / w_warm are the FULL caller wall-clocks of a cold / warm invoke from this \
-               client (pooled HTTPS connection), so they include the client->region network path."
+               client (pooled HTTPS connection), so they include the client->region network path. \
+               Those invokes ask for the log tail (LogType=Tail) to read REPORT; caller_warm_* are \
+               the same warm wait WITHOUT the tail (LogType=None), i.e. what a caller in production \
+               sees (no REPORT, so not individually confirmed warm). On the trivial hello cells, \
+               w_warm_p50 - caller_warm_p50 prices the tail."
             .to_string(),
         n_warm_per_sample: args.common.warm_per_sample,
+        n_caller_warm: args.caller_warm,
         cells: results,
     };
 
@@ -348,7 +384,13 @@ fn resolve_targets(args: &DownloadStartArgs, arch: Arch) -> Result<Vec<Cell>> {
 /// Aggregates a cell's samples into p50 of each term plus the residual spread via
 /// the shared `aggregate` (same reduction as the synthetic and image families),
 /// attaching the cell's identity + artifact sizes.
-fn aggregate_cell(cell: &Cell, zip: u64, unzipped: u64, samples: &[Sample]) -> CellResult {
+fn aggregate_cell(
+    cell: &Cell,
+    zip: u64,
+    unzipped: u64,
+    samples: &[Sample],
+    caller: &CallerWarm,
+) -> CellResult {
     let a = aggregate(samples);
     CellResult {
         function_name: cell.function_name(),
@@ -371,5 +413,10 @@ fn aggregate_cell(cell: &Cell, zip: u64, unzipped: u64, samples: &[Sample]) -> C
         residual_p50: a.residual_p50,
         residual_min: a.residual_min,
         residual_max: a.residual_max,
+        caller_warm_p50: caller.p50,
+        caller_warm_p90: caller.p90,
+        caller_warm_p99: caller.p99,
+        caller_warm_min: caller.min,
+        caller_warm_max: caller.max,
     }
 }

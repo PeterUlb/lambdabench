@@ -721,6 +721,43 @@ impl Aws {
             .await
     }
 
+    /// Times a `LogType=None` invoke of a bare function name: the request a
+    /// production caller makes. Asking for the log tail costs the caller a few ms
+    /// per invoke (the response then waits until the invocation has ended and its
+    /// `REPORT` exists), so the probe's production-caller block uses this to
+    /// measure the wait without that cost. No `REPORT` comes back, so the result
+    /// carries an empty `log_tail` and the invoke cannot be confirmed warm.
+    pub async fn invoke_no_tail_timed_by_name(
+        &self,
+        client: &aws_sdk_lambda::Client,
+        name: &str,
+        payload: &str,
+    ) -> Result<(InvokeResult, Duration)> {
+        let req = client
+            .invoke()
+            .function_name(name)
+            .log_type(LogType::None)
+            .payload(Blob::new(payload.as_bytes().to_vec()));
+        // Time only the round trip, as in invoke_tail_core.
+        let start = std::time::Instant::now();
+        let out = req
+            .send()
+            .await
+            .with_context(|| format!("invoking {name}"))?;
+        let elapsed = start.elapsed();
+        Ok((
+            InvokeResult {
+                status_code: out.status_code(),
+                function_error: out.function_error().map(|s| s.to_string()),
+                log_tail: String::new(),
+                payload: out
+                    .payload()
+                    .map(|b| String::from_utf8_lossy(b.as_ref()).into_owned()),
+            },
+            elapsed,
+        ))
+    }
+
     /// The cycle's extra, unrecorded invoke that asks the handler to log its host
     /// CPU (`LAMBDABENCH_CPU ...`, see `scenarios/rust/cpuinfo`): the cell's usual
     /// payload (see [`host_cpu_payload`] for the one exception) plus

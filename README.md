@@ -19,7 +19,9 @@ headline cold metric everywhere is **init (or restore) + the first request's dur
 a *floor*, not the caller's full wait: code download and environment setup finish before any `REPORT`
 clock starts and appear in no function metric, so they are measured separately by the
 [`probe` subcommand](#probe-the-pre-init-download--start-cost-documentation-only) rather than folded
-into the headline number.
+into the headline number. The warm metric (the handler's own `Duration`) is a floor too: a caller
+also waits for Lambda's per-invoke front end and the network, roughly 10 ms at the median from the
+same region and more at p99. The `probe` subcommand measures it.
 
 ## Quick start
 
@@ -117,7 +119,12 @@ vantage point on them is the caller's wall-clock, isolated by subtraction
 (`residual = W_cold − init − cold_duration − warm_rtt`). Alongside that decomposition it records
 the full caller wall-clocks themselves (`w_cold`/`w_warm`, p50 + min–max), which the site publishes
 as the end-to-end wait a same-region caller sees, cold and warm (network vs Lambda's per-invoke
-front-end is one un-itemized lump, so a "minus network" number is deliberately not claimed). It
+front-end is one un-itemized lump, so a "minus network" number is deliberately not claimed). Those
+invokes must ask for the log tail (`LogType=Tail`) to read `REPORT`, which costs the caller a few ms
+per invoke, so `download-start` also sends a block of production-caller warm invokes per cell with
+`LogType=None` (`caller_warm_*`, p50/p90/p99 + min–max): the warm wait as a caller in production sees it. The site
+derives the production front-end lump and the tail's price from the trivial `hello` cells, where
+the handler's `Duration` is about a millisecond. It
 has **two explicit subcommands**, one per [Cold Start Anatomy](site/src/lifecycle.md) chart; there
 is no default mode:
 
@@ -135,8 +142,9 @@ magnitudes, so they are framed as such and kept off the matrix. Nothing is commi
 has no probe data until a run produces it, and the site build fails loud rather than publish stale
 numbers. The publish pipeline (`deploy/run-benchmark.sh`) runs both subcommands in-region after the
 matrix run, so a manual run is only needed for local iteration. Flags: `--cold-samples` /
-`--warm-per-sample` (sample counts), `--only` / `--memory` / `--arch` (target selection), `--out`
-(output path). `download-scaling` is the **one place padding is used on purpose**; the [Matrix](#matrix)
+`--warm-per-sample` (sample counts), `--caller-warm` (`download-start` only: no-tail warm invokes
+per cell, default 300 so p99 is measured rather than the max of a handful), `--only` / `--memory` / `--arch` (target selection),
+`--out` (output path). `download-scaling` is the **one place padding is used on purpose**; the [Matrix](#matrix)
 section carries the rule for why that is legitimate here and nowhere else, and the full probe design
 (the residual method, the two runtime families, the teardown backstop) is in
 [DESIGN.md](DESIGN.md#the-probe-subcommand-is-outside-these-invariants).

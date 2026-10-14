@@ -308,7 +308,11 @@ signal can see, whereas the matrix records only in-Lambda REPORT timings and pin
 the region precisely to *minimize* caller wall-clock as noise (`config.rs::REGION`).
 Alongside that decomposition it also records the full cold/warm caller waits
 (`w_cold`/`w_warm`, p50 + min–max), which the site publishes as the end-to-end
-wait from the probe's vantage.
+wait from the probe's vantage. Because the decomposition's invokes request the log
+tail (`LogType=Tail`) to read `REPORT`, which adds a few ms per invoke,
+`download-start` adds a block of `LogType=None` warm invokes per cell
+(`caller_warm_*`, p50/p90/p99) for the production-caller warm wait; the site
+derives the lump and the tail's price from the trivial `hello` cells.
 So the "same task per language", bundled-SDK, and reproducibility rules do not apply
 to it: its output is single-account, region-specific magnitudes, written run-scoped
 into `results/` (gitignored) and discovered by the site's data loader at build time,
