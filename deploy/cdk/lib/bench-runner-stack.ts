@@ -65,6 +65,8 @@ export class BenchRunnerStack extends cdk.Stack {
       // build steps (Rust fat-LTO links, the gradle/JVM daemon), not the run.
       cpu: 2048,
       memoryLimitMiB: 8192,
+      // The default 20 GiB runs out of space during the build.
+      ephemeralStorageGiB: 60,
       runtimePlatform: {
         cpuArchitecture: ecs.CpuArchitecture.X86_64,
         operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,

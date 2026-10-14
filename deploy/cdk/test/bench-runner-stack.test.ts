@@ -193,6 +193,12 @@ describe("BenchRunnerStack IAM posture", () => {
     });
   });
 
+  test("the runner has room for every build's target dirs", () => {
+    template.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      EphemeralStorage: { SizeInGiB: 60 },
+    });
+  });
+
   test("the boundary ARN is injected into the runner container", () => {
     template.hasResourceProperties("AWS::ECS::TaskDefinition", {
       ContainerDefinitions: Match.arrayWith([
