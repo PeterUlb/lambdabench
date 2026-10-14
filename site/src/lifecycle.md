@@ -330,13 +330,19 @@ handful of functions probed here:
   beyond, next sections) **+ the front-end lump**
 - **expected warm wait** ≈ the scenario's **warm `duration`** **+ the front-end lump**
 
+The warm numbers on the main results are therefore a floor too, and proportionally a larger one: for
+a fast handler the lump is most of the wait. [The production caller](#the-production-caller-no-log-tail-p50-and-p99)
+below gives its p50 and p99.
+
 The **front-end lump** is the `warm RTT` of the table above, read as a cost instead of subtracted
 out: Lambda's per-invoke service processing plus the network transit, the un-itemized wall-clock
 the previous section only needed to cancel.
 That is why no metric, from any vantage, itemizes a "latency excluding network" number. The
 closest real setup to "network doesn't matter" is a caller in the function's own region: this run's
 lump is ~${ms(feLump)}, the median `warm RTT` across the probed cells (the published runs measure
-it in-region, on Fargate). How much of that is still transit cannot be measured here either, only
+it in-region, on Fargate). That figure includes a few ms that only the probe pays, for asking Lambda
+to return the log tail; a production caller's lump is ~${ms(feLumpProd)}
+([below](#the-production-caller-no-log-tail-p50-and-p99)). How much of that is still transit cannot be measured here either, only
 bounded, and the bound is an assumption about AWS's network, not a probe result: AWS documents
 intra-region networking as single-digit-millisecond round-trips even _across_ Availability Zones
 (dedicated metro fiber, AZs up to ~100 km apart; the
@@ -444,6 +450,88 @@ cold samples' warm batches). The probed rows whose handler does real per-invoke 
 above their lump, up to ~${ms(warmGap(warmGapCell))} on <code>${warmGapCell.lang}/${warmGapCell.scenario}</code>,
 again matching that cell's own warm `duration`. That is the warm half of the formula for any
 handler: its warm `duration` plus the lump.
+
+### The production caller: no log tail, p50 and p99
+
+Every probe invoke so far asks for `LogType=Tail`, because the log tail's `REPORT` line is the only
+per-invoke `Duration` a caller can get, and the decomposition needs it. Asking for the tail costs
+time: the response waits until the invocation has ended and its `REPORT` exists. The subtraction
+above cancels that cost; a caller in production does not ask for the tail. The
+${dl.n_warm_per_sample} warm invokes per sample also give a stable median but no usable p99. So after
+each cell's cold samples the probe sends **${dl.n_caller_warm} more warm invokes with
+`LogType=None`**, timed the same way, as a caller in production would send them:
+
+```js
+// Production-caller view: the no-tail warm wait (caller_warm_*), guaranteed
+// present by the data loader (stale-schema outputs refuse to build). No REPORT
+// comes back for these invokes, so the lump and the tail's price are derived on
+// the trivial hello cells only, where the handler's Duration (w_warm - warm_rtt)
+// is about a millisecond: there, the tailed and no-tail warm walls differ only by
+// the tail, and the no-tail wall minus Duration is the production lump.
+const helloCells = dl.cells.filter((c) => c.scenario === "hello");
+const tailCost = (c) => c.w_warm_p50 - c.caller_warm_p50;
+const lumpProd = (c) => c.caller_warm_p50 - (c.w_warm_p50 - c.warm_rtt_p50);
+const feLumpProd = median(helloCells.map(lumpProd));
+const tailCostMed = median(helloCells.map(tailCost));
+// The front end's own tail on the trivial cell (handler ~nothing): p99 over p50.
+const helloP99Gap = dlHello.caller_warm_p99 - dlHello.caller_warm_p50;
+// The tail's price across memory tiers on the same trivial function.
+const rustHello = helloCells
+  .filter((c) => c.lang === "rust")
+  .sort((a, b) => a.memory_mb - b.memory_mb);
+const tailLow = rustHello[0];
+const tailHigh = rustHello[rustHello.length - 1];
+display(
+  html`<table class="dlstart">
+      <thead>
+        <tr>
+          <th>scenario</th>
+          <th class="num">mem</th>
+          <th class="num"><strong>caller warm p50</strong></th>
+          <th class="num">p90</th>
+          <th class="num"><strong>p99</strong></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${dl.cells.map(
+          (c) =>
+            html`<tr>
+              <td><code>${c.lang}/${c.scenario}</code></td>
+              <td class="num">${c.memory_mb} MB</td>
+              <td class="num"><strong>${ms(c.caller_warm_p50, 1)}</strong></td>
+              <td class="num">${ms(c.caller_warm_p90, 1)}</td>
+              <td class="num">
+                <strong>${ms(c.caller_warm_p99, 1)}</strong>
+                <span class="caption"
+                  >(${c.caller_warm_min.toFixed(1)}–${c.caller_warm_max.toFixed(1)})</span
+                >
+              </td>
+            </tr>`,
+        )}
+      </tbody>
+    </table>
+    <div class="caption">
+      ${dl.n_caller_warm} back-to-back warm invokes per row with
+      <code>LogType=None</code>, nearest-rank percentiles, min–max in
+      parentheses. These return no <code>REPORT</code>, so they cannot
+      individually be confirmed warm: a sandbox re-placed mid-block lands here
+      as a slow outlier, as it would for any caller sending requests one at a
+      time. Off-matrix probe against deployed functions in ${dl.region}.
+    </div>`,
+);
+```
+
+The trivial `hello` rows separate the pieces, because their handler's `Duration` is about a
+millisecond. On them, asking for the tail costs ~${ms(tailCostMed, 1)} (median), so the production
+front-end lump is ~${ms(feLumpProd, 1)} rather than ~${ms(feLump)}. Read the warm half of the
+formula with that lump. The tail's price is not constant: on `rust/hello` it is
+~${ms(tailCost(tailLow), 1)} at ${tailLow.memory_mb} MB and ~${ms(tailCost(tailHigh), 1)} at
+${tailHigh.memory_mb} MB, consistent with the end of the invocation running on the tier's CPU
+share.
+
+On `rust/hello` @ 128 MB, where the handler adds almost nothing, the caller's p99 sits ~${ms(helloP99Gap, 1)} above its p50. That spread
+comes from the front end and the network, so the main results' warm p99
+(handler only) understates a caller's p99 by more than the median lump.
 
 <div class="warning" label="A floor from a same-region caller, not a latency promise">
 

@@ -106,6 +106,10 @@ display(
 <strong>Every cold-start number on this site is a floor, not the full wait.</strong> The reported cold figure is <code>init</code> (or SnapStart <code>Restore</code>) + the first request's <code>Duration</code>, which is all a <code>REPORT</code> line exposes. Before that clock starts, the caller also waits through <b>code download + execution-environment setup</b>, latency that appears in <em>no</em> function metric: a roughly constant floor for small packages, growing to a couple hundred ms for the larger packages here, and to of order a second near Lambda's size limit. <a href="./lifecycle#the-hidden-steps-download-environment-start">Cold Start Anatomy measures it →</a>
 </div>
 
+<div class="cold-caveat">
+<strong>Every warm number on this site is a floor too.</strong> Warm latency is the handler's own <code>Duration</code>. A caller also waits for <b>Lambda's per-invoke front end + the network</b>: roughly 10 ms at the median for a caller in the same region and more at p99, largely independent of the handler. For a fast handler that is most of the wait: a sub-millisecond warm figure here is still a ~10 ms request (and the same ~10 ms sits on top of every cold figure). <a href="./lifecycle#what-a-caller-waits-for-end-to-end">Cold Start Anatomy measures it →</a>
+</div>
+
 <details class="scenarios">
 <summary>What the ${stats.dimensions.scenarios.length} scenarios do &amp; what each one measures</summary>
 

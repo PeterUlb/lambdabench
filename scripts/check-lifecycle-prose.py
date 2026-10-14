@@ -419,6 +419,59 @@ if have_wait and rh:
         "'formula and measurement agree approximately, not exactly' (the sanity-check table)",
     )
 
+# --- Claim 6e: the production caller (no log tail) + the index warm-floor callout. ---
+# lifecycle.md derives its exact no-tail magnitudes from caller_warm_* at build
+# time, but site/src/index.md's "Every warm number on this site is a floor too"
+# callout is static prose: "roughly 10 ms at the median ... more at p99", repeated
+# in appendix.md's "What \"warm\" is" bullet and the README intro. Guard that
+# magnitude and the shape lifecycle.md asserts, derived the way the page derives
+# them: on the trivial hello cells, where the handler's Duration (w_warm -
+# warm_rtt) is ~1 ms, the production lump is caller_warm_p50 minus that Duration
+# and the tail's price is w_warm_p50 - caller_warm_p50.
+caller_fields = ("caller_warm_p50", "caller_warm_p90", "caller_warm_p99",
+                 "caller_warm_min", "caller_warm_max")
+have_caller = all(all(f in c for f in caller_fields) for c in scells)
+check(
+    "production-caller fields present",
+    have_caller,
+    "all cells carry caller_warm_p50/p90/p99/min/max"
+    if have_caller
+    else "probe JSON predates the production-caller fields (re-run probe download-start)",
+    "'The production caller' table and index.md's warm-floor callout (the site's data "
+    "loader refuses to build without them)",
+)
+hello_cells = [c for c in scells if c["scenario"] == "hello"]
+if have_caller and hello_cells:
+    tail_med = statistics.median(c["w_warm_p50"] - c["caller_warm_p50"] for c in hello_cells)
+    check(
+        "asking for the log tail costs the caller time",
+        tail_med >= 0.5,
+        f"median over hello cells (W_warm with tail - caller warm) = {tail_med:.1f} ms "
+        "(expect >= 0.5)",
+        "'asking for the tail costs ~<x>' and the production lump sitting below the "
+        "tailed one (derived at build time)",
+    )
+    lump_prod = statistics.median(
+        c["caller_warm_p50"] - (c["w_warm_p50"] - c["warm_rtt_p50"]) for c in hello_cells
+    )
+    check(
+        "production front-end lump is roughly 10 ms",
+        5.0 <= lump_prod <= 20.0,
+        f"median over hello cells (caller warm - Duration) = {lump_prod:.1f} ms (expect 5-20)",
+        "index.md: 'roughly 10 ms at the median for a caller in the same region' and "
+        "'a sub-millisecond warm figure here is still a ~10 ms request'; the same "
+        "'roughly 10 ms' in appendix.md's 'What warm is' bullet and the README intro",
+    )
+    if rh:
+        cell = next((c for c in rh if c["memory_mb"] == 128), rh[0])
+        p99_gap = cell["caller_warm_p99"] - cell["caller_warm_p50"]
+        check(
+            "rust/hello caller p99 sits above its p50",
+            p99_gap >= 0.5,
+            f"caller_warm_p99 - caller_warm_p50 = {p99_gap:.1f} ms (expect >= 0.5)",
+            "index.md: 'more at p99'; lifecycle.md: the caller's p99 sits above its p50",
+        )
+
 # --- Claims 7-10: the container-image "Zip vs container image" subsection. ---
 # The exact image magnitudes (touched-init endpoints, residual-floor range, the
 # total-overhead table) are DERIVED from this JSON in lifecycle.md itself, so they
