@@ -221,6 +221,33 @@ manifests lists. Pruning starts once that many manifests exist.
 To refresh the data, run `deploy/run.sh` again. The site build's data loaders always pick the newest
 `results/run-*` (matrix) and `results/lifecycle-*` (probe) files.
 
+### What a run costs
+
+> **Best-effort estimate, not a quote.** These figures come from one full run's bill (September
+> 2026, the then-current matrix in `eu-central-1`) and the AWS free tier as it was then. A larger
+> matrix, new scenarios, longer runs, different SDK behavior or AWS price changes all move them, so
+> check Cost Explorer after a run before relying on them.
+
+| Item                                                  | Free tier available | Free tier used up |
+| ----------------------------------------------------- | ------------------- | ----------------- |
+| Fargate runner (~6 h of benchmark plus the build)     | $1.33               | $1.33             |
+| KMS (~318k `Encrypt` requests; the key costs < $0.01) | $0.89               | $0.95             |
+| S3 (mostly `smithyfull`'s `PutObject`)                | $0.82               | $0.82             |
+| DynamoDB (on-demand reads and writes)                 | $0.13               | $0.13             |
+| Lambda (~195k GB-seconds, ~2.6M requests)             | $0.32               | ~$3.50            |
+| ECR image storage, public IPv4 address                | $0.14               | $0.14             |
+| **Total before tax**                                  | **~$3.65**          | **~$6.90**        |
+
+- The monthly Lambda free tier (400k GB-seconds, 1M requests) covers all of a run's compute, so
+  with it the run pays only for the requests beyond the first million. Check **Billing → Free
+  tier** before a run to see how much of the month's allowance is left.
+- KMS's free 20k requests per month barely matter here; the run makes ~318k.
+- Java SnapStart adds no charge (the snapshot cache and restore fees apply to Python and .NET only).
+- The per-run KMS key is billed only until it is scheduled for deletion; a scheduled key is free.
+- CloudWatch Logs stays within its free 5 GB per month.
+- Each `cdk deploy` from changed source leaves the previous runner image in the assets repo (see
+  "The runner image"), adding ECR storage until it is deleted.
+
 ## Verification
 
 1. **Infra:** after `cdk deploy`, the bucket is private and the distribution answers on both

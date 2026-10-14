@@ -49,6 +49,12 @@ cd site && npm install && npm run dev   # explore the results in the browser
 > happens to have an unrelated resource sharing a name/tag, `run`/`teardown` cannot tell it apart from
 > its own. See [Region / account](#region--account).
 
+> [!NOTE]
+> **A full run costs money.** For the current matrix, a full `run` costs roughly $2–6 before tax in
+> Lambda, KMS, S3 and DynamoDB charges, depending on how much of the month's Lambda free tier is left;
+> publishing through the Fargate runner adds about $1.40. These are best-effort estimates from one
+> run's bill. Breakdown and caveats: [What a run costs](deploy/README.md#what-a-run-costs).
+
 `run` owns the full pipeline (build → deploy → benchmark), so there is no separate deploy step. To
 iterate without repeating work, scope `run` and skip the phases that have not changed:
 `run --skip-build` reuses the artifacts already in `dist/`, and `run --skip-deploy` invokes the
