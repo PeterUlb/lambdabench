@@ -20,8 +20,9 @@ a *floor*, not the caller's full wait: code download and environment setup finis
 clock starts and appear in no function metric, so they are measured separately by the
 [`probe` subcommand](#probe-the-pre-init-download--start-cost-documentation-only) rather than folded
 into the headline number. The warm metric (the handler's own `Duration`) is a floor too: a caller
-also waits for Lambda's per-invoke front end and the network, roughly 10 ms at the median from the
-same region and more at p99. The `probe` subcommand measures it.
+also waits for Lambda's per-invoke front end, roughly 10 ms at the median from the same region and
+more at p99, almost all of it service processing rather than network. The `probe` subcommand
+measures it.
 
 ## Quick start
 
