@@ -3,5 +3,5 @@
 # assembly-optimized native crypto path (symmetric with Rust's AWS-LC, Node's
 # WebCrypto, Java's JCA; see invariant #2). `cryptography` ships a per-arch
 # native abi3 wheel, which is why the authz artifact is built per architecture.
-PyJWT==2.13.0
-cryptography==49.0.0
+PyJWT==2.15.1
+cryptography==50.0.2

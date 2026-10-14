@@ -64,8 +64,8 @@ ENV JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64
 # --- Go 1.26 -----------------------------------------------------------------
 # Version + sha256 pinned so a rebuild produces the same toolchain; bump both
 # together (the checksum is listed next to the file on https://go.dev/dl/).
-ARG GO_VERSION=1.26.4
-ARG GO_SHA256=1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f
+ARG GO_VERSION=1.26.9
+ARG GO_SHA256=42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz \
     && echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c - \
     && tar -C /usr/local -xzf /tmp/go.tgz \
@@ -77,8 +77,8 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go
 # pinned; bump explicitly. rustc itself tracks `stable` at build time, so a
 # rebuild can pick up a newer compiler (the per-run build manifest records the
 # resolved versions).
-ARG ZIGLANG_VERSION=0.16.0
-ARG CARGO_LAMBDA_VERSION=1.9.1
+ARG ZIGLANG_VERSION=0.17.0
+ARG CARGO_LAMBDA_VERSION=1.9.2
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal \
     && rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
@@ -99,8 +99,8 @@ RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tm
 # privileged container and runs unattended in this Fargate task. Version + sha256
 # pinned so a rebuild produces the same binary; bump both together (checksums.txt
 # for the release lists the amd64 digest).
-ARG CRANE_VERSION=0.21.7
-ARG CRANE_SHA256=1a57bc98207fa1c0d04bf760699099e26f8383499bfd55b99c1b919a928a7230
+ARG CRANE_VERSION=0.22.1
+ARG CRANE_SHA256=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
 RUN curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" -o /tmp/crane.tgz \
     && echo "${CRANE_SHA256}  /tmp/crane.tgz" | sha256sum -c - \
     && tar -xzf /tmp/crane.tgz -C /usr/local/bin crane \

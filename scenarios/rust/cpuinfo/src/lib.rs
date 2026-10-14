@@ -18,7 +18,7 @@ pub const VALUE: &str = "cpu";
 
 /// Logs the host CPU if the invoke's ClientContext asks for it. Takes the custom
 /// map rather than a `lambda_runtime` type so crates on different
-/// `lambda_runtime` versions (the Smithy scenarios pin 0.8) can share it.
+/// `lambda_runtime` versions can share it.
 pub fn report_if_requested(custom: Option<&HashMap<String, String>>) {
     if requested(custom) {
         report();

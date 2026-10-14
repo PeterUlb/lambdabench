@@ -10,7 +10,7 @@ dependencies {
     implementation("software.amazon.smithy:smithy-model:$smithyVersion")
     implementation("software.amazon.smithy:smithy-aws-traits:$smithyVersion")
     implementation("software.amazon.smithy:smithy-validation-model:$smithyVersion")
-    implementation("software.amazon.smithy.typescript:smithy-aws-typescript-codegen:0.22.0")
+    implementation("software.amazon.smithy.typescript:smithy-aws-typescript-codegen:0.54.0")
 }
 
 // Single shared model as the source of truth.

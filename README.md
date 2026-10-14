@@ -263,7 +263,7 @@ package-private), so an operator can prime the operation and (for `smithyfull`) 
 **not the framework marshalling**. That unprimable residue is a *second* penalty on top of restore
 overhead, so both Smithy scenarios trail plain Java net, unlike the SDK-only `threeclient` where priming
 reaches everything and SnapStart wins. This is a property of the smithy-java
-API surface used in this run (1.4.0), not of SnapStart; a future warmup hook would remove it.
+API surface used in this run (1.7.0), not of SnapStart; a future warmup hook would remove it.
 Faking it by reaching into package-private internals is rejected as a methodology bug (DESIGN.md
 Measurement-purity invariant #10). Full write-up and magnitudes on
 **[lambdabench.dev/java-snapstart](https://lambdabench.dev/java-snapstart.html)**.

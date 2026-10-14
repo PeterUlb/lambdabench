@@ -9,7 +9,7 @@ import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { KMSClient, EncryptCommand } from "@aws-sdk/client-kms";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCoffeeShopServiceHandler, OrderNotFound } from "@com.example/coffee-shop-server";
-import { convertEvent, convertResponse } from "@aws-smithy/server-apigateway";
+import { convertEvent, convertVersion2Response } from "@smithy/server-apigateway";
 import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 const TABLE = process.env.LAMBDABENCH_TABLE;
@@ -81,5 +81,5 @@ export const handler = async (event, context) => {
   reportIfRequested(context);
   const httpRequest = convertEvent(event);
   const httpResponse = await serviceHandler.handle(httpRequest, {});
-  return convertResponse(httpResponse);
+  return convertVersion2Response(httpResponse);
 };

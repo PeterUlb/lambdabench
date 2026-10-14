@@ -24,7 +24,7 @@ dependencies {
     implementation("software.amazon.smithy.java:server-api:$smithyJavaVersion")
     implementation("software.amazon.smithy.java:aws-server-restjson:$smithyJavaVersion")
 
-    implementation(platform("software.amazon.awssdk:bom:2.31.6"))
+    implementation(platform("software.amazon.awssdk:bom:2.55.16"))
     implementation("software.amazon.awssdk:dynamodb")
     implementation("software.amazon.awssdk:kms")
     implementation("software.amazon.awssdk:s3")

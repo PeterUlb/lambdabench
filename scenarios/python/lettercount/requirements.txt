@@ -2,5 +2,5 @@
 # invariant #3: each language ships its own pinned SDK so artifact size and
 # cold-start cost are representative. botocore is pinned alongside it for
 # reproducibility (boto3 floats its botocore range otherwise).
-boto3==1.43.33
-botocore==1.43.33
+boto3==1.43.113
+botocore==1.43.113

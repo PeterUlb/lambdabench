@@ -3,10 +3,10 @@
 // groups-by key into a map. Needs the S3 client and a JSON parser.
 
 dependencies {
-    implementation(platform("software.amazon.awssdk:bom:2.31.6"))
+    implementation(platform("software.amazon.awssdk:bom:2.55.16"))
     implementation("software.amazon.awssdk:s3")
     implementation("software.amazon.awssdk:url-connection-client")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.3")
 }
 
 configurations.all {

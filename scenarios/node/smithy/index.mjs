@@ -8,7 +8,7 @@
 // (GET /menu); no real API Gateway is involved.
 
 import { getCoffeeShopServiceHandler, OrderNotFound } from "@com.example/coffee-shop-server";
-import { convertEvent, convertResponse } from "@aws-smithy/server-apigateway";
+import { convertEvent, convertVersion2Response } from "@smithy/server-apigateway";
 import { reportIfRequested } from "../lib/cpuinfo.mjs";
 
 // CoffeeShop operation implementations. Only GetMenu is exercised by the
@@ -37,5 +37,5 @@ export const handler = async (event, context) => {
   reportIfRequested(context);
   const httpRequest = convertEvent(event);
   const httpResponse = await serviceHandler.handle(httpRequest, ctx);
-  return convertResponse(httpResponse);
+  return convertVersion2Response(httpResponse);
 };

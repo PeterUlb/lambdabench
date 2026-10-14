@@ -7,8 +7,8 @@
  version = "0.1.0"
  edition = "2024"
  license = "Apache-2.0"
-@@ -20,13 +20,14 @@
- lambda_http = "0.8"
+@@ -22,10 +22,11 @@
+ lambda_http = "1"
  tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
  
 -aws-config = "1"
@@ -23,17 +23,14 @@
  
  # Generated server SDK (shared with the `smithy` scenario), Lambda adapter on.
  coffeeshop_server_sdk = { path = "../smithy/server/build/smithyprojections/server/source/rust-server-codegen", features = ["aws-lambda"] }
- 
- # Standalone crate (excluded from the root workspace, depends on generated
- # code). Declare the same optimizations as the rest of the Rust matrix, under the
-@@ -38,3 +39,4 @@
+@@ -40,3 +41,4 @@
  opt-level = 3
  strip = true
  panic = "abort"
 +[workspace]
 --- scenarios/rust/smithyfull/src/main.rs
 +++ smithyfull-tuned-ring/src/main.rs
-@@ -145,10 +145,24 @@
+@@ -146,10 +146,24 @@
  
  #[tokio::main]
  async fn main() {
@@ -58,7 +55,7 @@
          .retry_config(aws_config::retry::RetryConfig::disabled())
          .load()
          .await;
-@@ -163,6 +177,29 @@
+@@ -164,6 +178,29 @@
          receipt_key: std::env::var(ENV_RECEIPT_KEY).expect("LAMBDABENCH_RECEIPT_KEY not set"),
      });
  

@@ -5,6 +5,11 @@ Patches against `scenarios/rust/smithyfull` behind the `smithyfull` rows on
 server SDK generated as for the matrix) and the patch applied, then deployed with
 `../probe.py` using the `@payload=smithyfull-event.json` config key.
 
+The patches apply to the scenario as it is now. The page's numbers were measured
+before the 2026-10-15 dependency update, when the scenario still used `lambda_http`
+0.8 with the http 0.x server SDK and `aws-config` 1.8.18; rebuilding today gives the
+current versions, so absolute numbers can differ.
+
 | Patch                     | What it adds                                                                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------- |
 | `slim-prewarm-read.patch` | SDK default features off; `SF_PREWARM=1` opens all three connections at init, concurrently; `SF_PREFAULT=1` reads the executable at init |

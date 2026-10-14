@@ -33,14 +33,14 @@ subprojects {
     dependencies {
         // The Lambda core types (RequestHandler, Context) are needed by every
         // handler, including the smithy-java LambdaEndpoint.
-        "implementation"("com.amazonaws:aws-lambda-java-core:1.2.3")
+        "implementation"("com.amazonaws:aws-lambda-java-core:1.4.0")
         // CRaC runtime hooks (org.crac), used to PRIME SnapStart snapshots: a
         // beforeCheckpoint() hook runs one representative invocation during init
         // so the SDK class-loading / marshaller construction / JIT cost is captured
         // in the snapshot rather than paid on the first restored invoke. The
         // hook fires ONLY when a checkpoint is taken (SnapStart on); on a plain
         // function org.crac uses a no-op context, so the same jar is unaffected.
-        "implementation"("org.crac:crac:1.4.0")
+        "implementation"("org.crac:crac:1.5.0")
     }
 
     // Package a Lambda deployment zip: compiled jar + runtime dependencies under

@@ -4,8 +4,8 @@
 // verification key is embedded as a resource.
 
 dependencies {
-    implementation("com.nimbusds:nimbus-jose-jwt:9.40")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    implementation("com.nimbusds:nimbus-jose-jwt:10.10")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.3")
 }
 
 // The public JWK is a build-time fixture generated (idempotently) by the shared

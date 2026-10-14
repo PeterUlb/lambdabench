@@ -132,6 +132,6 @@ The Smithy scenarios carry the restore-overhead cost above _plus_ a second penal
 - **`smithyfull`** primes its three SDK clients, so the restore marker drops below plain Java's init at every tier, but the unprimable framework marshalling survives into the first restored request. The surviving framework cost is large enough that SnapStart still trails plain Java net on this scenario, unlike the SDK-only `threeclient` where priming reaches everything and SnapStart wins.
 - **`smithy`** has no SDK and no AWS call, so there is nothing to hoist; it is left unprimed by design. Its SnapStart cold start carries the full framework first-request cost on top of restore overhead, which is why it trails plain Java. This is the expected result for a framework-only handler on SnapStart with the current smithy-java, not a defect.
 
-The framework residue is a property of the smithy-java API surface used in this run (1.4.0), not of SnapStart itself: a future supported framework-level warmup hook would shrink this second penalty, though the restore-overhead floor above would remain.
+The framework residue is a property of the smithy-java API surface used in this run (1.7.0), not of SnapStart itself: a future supported framework-level warmup hook would shrink this second penalty, though the restore-overhead floor above would remain.
 
 </details>

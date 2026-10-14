@@ -367,7 +367,7 @@ Applied to the benchmark's `smithyfull` handler (Smithy server SDK plus KMS, Dyn
 | Calls at init: default features off, `SSL_CERT_FILE` set, connections opened | ~149 ms              | ~131 ms                | ~180 ms           | ~159 ms             |
 | Calls at init: the same, with rustls on ring                                 | ~140 ms              | ~123 ms                | ~169 ms           | ~153 ms             |
 
-(The benchmark's lockfile: `aws-config` 1.8.18, `rustls-native-certs` 0.8.5. 20 forced cold starts per cell, both regions at the same time.)
+(The benchmark's lockfile at the time: `aws-config` 1.8.18, `rustls-native-certs` 0.8.5. 20 forced cold starts per cell, both regions at the same time.)
 
 The same combinations measured a day earlier with `aws-config` 1.12 gave ~373 ms as in the benchmark, ~246 ms with no calls at init and ~147 ms with calls at init, at 128 MB in `eu-central-1`.
 
@@ -390,7 +390,7 @@ With one full vCPU (1,769 MB) the levers that only move work into Init stop matt
 
 <div class="note" label="Why some baselines on this page sit above the benchmark's">
 
-The 1,769 MB table and the single-lever sections used `aws-config` 1.12, while the benchmark's lockfile has 1.8.18. In interleaved comparisons the 1.12 build's first request at 128 MB was ~10 to ~50 ms slower across three runs (~376 ms against ~325 ms cold in the largest); Init and 1,024 MB were unaffected.
+The 1,769 MB table and the single-lever sections used `aws-config` 1.12, while the benchmark's lockfile then had 1.8.18 (it has 1.12 since 2026-10-15). In interleaved comparisons the 1.12 build's first request at 128 MB was ~10 to ~50 ms slower across three runs (~376 ms against ~325 ms cold in the largest); Init and 1,024 MB were unaffected.
 
 The difference is in [loading code](#why-the-first-request-is-slow-loading-code); no crate does more work in the newer build. Tracing which pages each phase touched showed that the 1.12 build's first request needed 12 blocks Init had not loaded, against 8, mostly because the TLS handshake code, which first runs on that request, landed in blocks of its own instead of next to code Init had already loaded. Where code lands is a side effect of linking, so any dependency update can move it either way. Reading the executable at init removed the gap (to ~3 ms).
 
@@ -406,7 +406,7 @@ These did not move the cold start beyond run-to-run noise at 128 MB or 1,024 MB:
 - **mimalloc** as the global allocator.
 - **S3 request checksums only when required** (`request_checksum_calculation`), for cold or warm `PutObject`.
 - **X25519 instead of post-quantum `X25519MLKEM768`** key exchange, on the first handshake or later ones.
-- **A newer Smithy server SDK** (`http-1x` codegen with `lambda_http` 1, instead of the benchmark's http 0.x codegen) for `smithyfull`.
+- **A newer Smithy server SDK** (`http-1x` codegen with `lambda_http` 1, instead of the http 0.x codegen the benchmark used until 2026-10-15) for `smithyfull`.
 - **A non-PIE executable** (`-C relocation-model=static` on the final crate only, through cargo-lambda's zig toolchain, `smithyfull`): the dynamic loader's 640 KB of relocations went away and Init dropped by ~3 ms, but the first request at 128 MB got slower, from ~279 ms to ~333 ms, because the new layout made it take 23 major faults instead of 16. At 1,024 MB both took ~174 ms cold.
 - **Changing the kernel's read-around for the executable** (`madvise` with `MADV_RANDOM` or `MADV_SEQUENTIAL` on its mappings, first thing in `main()`, crypto probe): the faults got smaller or larger, but their CPU cost followed the amount read from disk, ~6 to ~8 µs per KB, and that barely changed.
 

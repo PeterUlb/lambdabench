@@ -6,7 +6,12 @@
       "module": "coffeeshop_server_sdk",
       "moduleVersion": "0.1.0",
       "moduleDescription": "LambdaBench CoffeeShop Rust server SDK",
-      "moduleAuthors": ["LambdaBench"]
+      "moduleAuthors": [
+        "LambdaBench"
+      ],
+      "codegen": {
+        "http-1x": true
+      }
     }
   }
 }
