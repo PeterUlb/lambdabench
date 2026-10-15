@@ -333,9 +333,9 @@ boundary (lazy SDK clients, credential/endpoint resolution, first connection, TL
 first invocation instead, in that request's `Duration`. So **`Init Duration` alone is not a fair
 cold-start metric**: it rewards laziness. The benchmark records both the cold marker
 (`init_ms`/`restore_ms`) and the cold invocation's `duration_ms`, and the **headline cold metric
-everywhere is their sum**. The clearest case is Go vs Rust on `oneclient`: Go's init is *lower*, but the
-AWS SDK for Go v2 builds its client lazily while `aws-config` does it eagerly, so read by total cold start
-the ordering flips and Rust comes out ahead. This is the mirror image of SnapStart priming (which
+everywhere is their sum**. The clearest case is Go vs Rust on `oneclient`: their init times are within a few milliseconds of each
+other, but the AWS SDK for Go v2 builds its client lazily while `aws-config` does it eagerly, so Go pays
+that work on the first request and by total cold start Rust comes out well ahead. This is the mirror image of SnapStart priming (which
 *hoists* first-request cost into snapshot time); in both cases the total is the only fair metric. Full
 breakdown on **[lambdabench.dev/lifecycle](https://lambdabench.dev/lifecycle.html)** and the "Cold start
 breakdown" chart on **[lambdabench.dev/comparison](https://lambdabench.dev/comparison.html)**.

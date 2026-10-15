@@ -13,8 +13,8 @@ edge. Guarded claims and where their prose lives:
     priming is decisive ...")
   - Go's `batch` warm median trails Rust's      (README "Finding: Go's slower
     `batch` warm time is encoding/json, not GC")
-  - `oneclient` init-vs-total ordering flip     (README "Finding: cold start =
-    for Go vs Rust                               init + first request";
+  - `oneclient` init tie vs total gap (Go-Rust) (README "Finding: cold start =
+                                                 init + first request";
                                                  site/src/lifecycle.md)
   - the opt-level directions                    (site/src/rust.md "Opt-level:
     (oz usually cold-wins, o3 warm-wins on CPU)  speed vs size")
@@ -169,14 +169,14 @@ check(
     "README 'Finding: Go's slower batch warm time is encoding/json, not GC'",
 )
 
-# ---- Claim 3: the oneclient init-vs-total flip (Go vs Rust) -----------------
-# README: "Go's init is *lower*, but ... read by total cold start the ordering
-# flips and Rust comes out ahead."
-fr, n = frac(shared_p50s("go", "rust", "oneclient", "coldInit"), lambda p: p[0] < p[1])
+# ---- Claim 3: the oneclient init-vs-total gap (Go vs Rust) ------------------
+# README: "their init times are within a few milliseconds of each other, but
+# ... by total cold start Rust comes out well ahead."
+fr, n = frac(shared_p50s("go", "rust", "oneclient", "coldInit"), lambda p: abs(p[0] - p[1]) <= 10)
 check(
-    "go oneclient init lower than rust",
+    "go oneclient init within 10 ms of rust",
     fr is not None and fr >= CATEGORICAL,
-    f"go init lower in {fmt(fr, n)}",
+    f"within 10 ms in {fmt(fr, n)}",
     "README 'Finding: cold start = init + first request' (Go vs Rust on oneclient)",
 )
 fr, n = frac(shared_p50s("rust", "go", "oneclient", "cold"), lambda p: p[0] < p[1])

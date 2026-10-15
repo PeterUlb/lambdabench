@@ -199,9 +199,9 @@ README Findings):
    records both (`init_ms`/`restore_ms` and the cold row's `duration_ms`), and
    every cold aggregate/chart uses the sum (the site additionally *splits* it so
    the eager-vs-lazy difference is visible). Concrete shape: on `oneclient` the
-   AWS SDK for Go v2 builds its client lazily, so Go's init is *lower* than Rust's
-   while its first request is *far higher*. By total cold-start latency Rust comes out
-   ahead, the opposite of the init-only reading. The current-run absolute numbers
+   AWS SDK for Go v2 builds its client lazily, so Go's init is about the same as
+   Rust's while its first request is *far higher*. By total cold-start latency Rust comes
+   out well ahead, which the init-only reading does not show. The current-run absolute numbers
    live in the README "Finding" sections and the run data, not here. This is the
    mirror image of SnapStart priming (#6), which deliberately hoists first-request
    cost *into* init/snapshot time.
