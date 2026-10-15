@@ -24,6 +24,34 @@ use futures::stream::{self, TryStreamExt};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+/// Longest expected cell first, so the slow low-memory `batch` cells start right
+/// away instead of finishing long after the rest. Ties keep matrix order.
+fn longest_first(cells: &[Cell], profile: crate::config::Profile) -> Vec<Cell> {
+    let mut order = cells.to_vec();
+    order.sort_by(|a, b| expected_secs(b, profile).total_cmp(&expected_secs(a, profile)));
+    order
+}
+
+/// Rough run time of one cell, only used for ordering. Per-invoke seconds are at a
+/// full vCPU (1,769 MB) from the 2026-10-14 run and grow as memory drops below it.
+/// A cold cycle adds the forced redeploy; on SnapStart that publishes a version.
+fn expected_secs(cell: &Cell, profile: crate::config::Profile) -> f64 {
+    use crate::config::Scenario;
+    let per_invoke = match cell.scenario {
+        Scenario::Batch => 0.3,
+        Scenario::ThreeClient | Scenario::SmithyFull => 0.05,
+        Scenario::OneClient => 0.04,
+        Scenario::Hello | Scenario::Smithy => 0.03,
+        Scenario::LetterCount | Scenario::Cache => 0.02,
+        Scenario::Authz => 0.015,
+    };
+    let cpu_share = f64::from(cell.memory_mb.min(1769)) / 1769.0;
+    let per_cold_cycle = if cell.snapstart { 45.0 } else { 2.0 };
+    let (cold, warm) = cell.iterations(profile);
+    let (cold, warm) = (f64::from(cold), f64::from(warm));
+    cold * per_cold_cycle + cold * (1.0 + warm) * per_invoke / cpu_share
+}
+
 /// Current UTC wall-clock time as `HH:MM:SS`, for stamping progress lines so a
 /// stall is visible at a glance. Derived from the shared epoch-ms clock (no date
 /// dependency).
@@ -55,6 +83,7 @@ pub async fn run(
 ) -> Result<()> {
     let total = cells.len();
     let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cells = longest_first(cells, params.profile);
 
     // Fail-fast: `try_for_each_concurrent` runs up to `pool` cells at once and, on
     // the first `Err`, stops pulling new cells and drops the in-flight futures
@@ -830,6 +859,24 @@ mod tests {
 
     fn cpus(rows: &[InvocationRow]) -> Vec<Option<&str>> {
         rows.iter().map(|r| r.host_cpu.as_deref()).collect()
+    }
+
+    #[test]
+    fn longest_first_starts_low_memory_batch_and_keeps_every_cell() {
+        use crate::config::{Profile, Scenario, all_cells};
+        let cells = all_cells();
+        let order = longest_first(&cells, Profile::Full);
+        let names = |cs: &[Cell]| {
+            let mut v: Vec<String> = cs.iter().map(Cell::function_name).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(names(&order), names(&cells));
+        assert!(
+            order[..8]
+                .iter()
+                .all(|c| c.scenario == Scenario::Batch && c.memory_mb <= 512)
+        );
     }
 
     #[test]
