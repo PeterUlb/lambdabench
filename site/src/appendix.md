@@ -48,7 +48,7 @@ display(C.distribution(v, distMem));
 
 ## Host CPUs
 
-<div class="chart-sub">Which host CPUs this run's cold starts ran on, per architecture. Lambda chooses the host per execution environment, and on arm64 it mixes Graviton generations. In a probe those differed by about 30% on the same cold start (<a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>), so this mix is part of what every arm64 percentile on this page measures. The table covers the whole run and ignores the filters above. Each cycle's handler reports its CPU from <code>/proc/cpuinfo</code> on an extra invoke after the measured ones, so the reporting itself is not in any timing.</div>
+<div class="chart-sub">Which host CPUs this run's cold starts ran on, per architecture. Lambda chooses the host per execution environment, and on arm64 it mixes Graviton generations. In the 2026-10-14 run the same function's cold start took about 45% longer on Graviton2 than on Graviton4 (<a href="./lifecycle#reading-the-cold-numbers">reading the cold numbers</a>), so this mix is part of what every arm64 percentile on this page measures. The table covers the whole run and ignores the filters above. Each cycle's handler reports its CPU from <code>/proc/cpuinfo</code> on an extra invoke after the measured ones, so the reporting itself is not in any timing.</div>
 
 ```js
 // One row per (architecture, CPU), counted over cold starts: each cycle is one

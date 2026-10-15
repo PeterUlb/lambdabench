@@ -1075,9 +1075,9 @@ crash costs more, as covered on the [SnapStart page](./java-snapstart#after-a-cr
   `eu-central-1` and `us-east-1`), Lambda placed the same arm64 function on Graviton2, Graviton3
   and Graviton4 hosts, chosen per execution environment. A Rust `smithyfull` cold start at 128 MB
   took ~354 ms on Graviton3 and ~292 ms on Graviton4 in `eu-central-1`, and ~402 ms on Graviton2
-  and ~376 ms on Graviton3 in `us-east-1`. No region had enough of both Graviton2 and Graviton4 to
-  compare them directly, so combining the two per-region gaps puts Graviton2 about 30% slower than
-  Graviton4. The mix differed by region and between probes on the same day. On x86_64, Firecracker
+  and ~376 ms on Graviton3 in `us-east-1`. The 2026-10-14 benchmark run drew all three in `eu-central-1`, about
+  1,000 cold starts each on Graviton2 and Graviton4. Comparing each function with itself, a cold
+  start took about 45% longer on Graviton2 than on Graviton4, and about 25% longer on Graviton3. The mix differed by region and between probes on the same day. On x86_64, Firecracker
   (Lambda's VM layer) reports every host as a generic "Intel(R) Xeon(R) Processor" with only the
   host's nominal clock, which hides the generation. Most cold starts showed "@ 2.50GHz". A few
   hosts reported no clock, and those ran a CPU-bound Python loop ~24% faster than the "@ 2.50GHz"

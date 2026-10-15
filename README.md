@@ -437,8 +437,8 @@ The tail-vs-median charts and the read-in-absolute-ms rule are on
 5. **Serial within a function** (so warm invokes always hit the same warm sandbox), **parallel across
    functions** (independent functions never affect each other's sandboxes).
 6. **The host CPU is recorded, outside the measurement.** Lambda runs arm64 functions on several
-   Graviton generations, and in a probe the same cold start took about 30% longer on Graviton2 than
-   on Graviton4. After a cycle's recorded invokes, the driver sends one more, unrecorded invoke to
+   Graviton generations, and in the 2026-10-14 run the same function's cold start took about 45% longer
+   on Graviton2 than on Graviton4. After a cycle's recorded invokes, the driver sends one more, unrecorded invoke to
    the same sandbox. That invoke asks the handler to log its CPU from `/proc/cpuinfo`: on arm64 the
    part number, which tells Graviton2, 3 and 4 apart; on x86 the model name, which Firecracker,
    Lambda's VM layer, reduces to a generic Intel Xeon name plus the host's nominal clock. The driver
