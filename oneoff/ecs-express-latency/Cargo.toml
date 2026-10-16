@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["server", "caller"]
+
+# One-off probe: Lambda -> ECS Express (ALB -> Fargate) round-trip latency,
+# to compare against Lambda's own per-invoke front end. Not part of the
+# benchmark matrix; see README.md here for how to run it. Standalone (excluded
+# from the root workspace) so axum/reqwest stay out of the matrix's lock.
