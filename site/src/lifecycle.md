@@ -343,13 +343,21 @@ lump is ~${ms(feLump)}, the median `warm RTT` across the probed cells (the publi
 it in-region, on Fargate). That figure includes a few ms that only the probe pays, for asking Lambda
 to return the log tail; a production caller's lump is ~${ms(feLumpProd)}
 ([below](#the-production-caller-no-log-tail-p50-and-p99)). How much of that is still transit cannot be measured here either, only
-bounded, and the bound is an assumption about AWS's network, not a probe result: AWS documents
-intra-region networking as single-digit-millisecond round-trips even _across_ Availability Zones
-(dedicated metro fiber, AZs up to ~100 km apart; the
+bounded. AWS documents intra-region networking as single-digit-millisecond round-trips even
+_across_ Availability Zones (dedicated metro fiber, AZs up to ~100 km apart; the
 [fault-isolation whitepaper](https://docs.aws.amazon.com/whitepapers/latest/aws-fault-isolation-boundaries/availability-zones.html)),
 and [independent measurements](https://www.bitsand.cloud/posts/cross-az-latencies) put cross-AZ
-round-trips at ~0.5-2 ms in most regions. On that assumption, an in-region lump is an **upper bound
-on the front-end cost, and nearly all of it is service processing**. From a remote client, the
+round-trips at ~0.5-2 ms in most regions. A same-region HTTPS request that skips Lambda's front end
+measured below that range:
+
+> **Dated one-off characterization (taken 2026-10-16, `eu-central-1`, single account; not
+> committed data).** From a Lambda function (arm64, 1769 MB, one pooled HTTP/2 connection), 1,000
+> sequential GETs to a hello-world server on Fargate (arm64, 1 vCPU) behind an Application Load
+> Balancer took **~0.7 ms at p50 and ~1 ms at p99**, network both ways, load balancer and server
+> included. The first request on a new TCP + TLS connection took ~10 ms.
+
+The network share of the lump is at most that, so an in-region lump is an **upper bound on the
+front-end cost, and nearly all of it is service processing**. From a remote client, the
 client→region round-trip goes on top of both expectations, plus a TLS handshake when the connection
 is not pooled.
 
@@ -530,7 +538,8 @@ ${tailHigh.memory_mb} MB, consistent with the end of the invocation running on t
 share.
 
 On `rust/hello` @ 128 MB, where the handler adds almost nothing, the caller's p99 sits ~${ms(helloP99Gap, 1)} above its p50. That spread
-comes from the front end and the network, so the main results' warm p99
+comes almost entirely from the front end (the same-region request above that bypasses it has a p99
+of ~1 ms), so the main results' warm p99
 (handler only) understates a caller's p99 by more than the median lump.
 
 <div class="warning" label="A floor from a same-region caller, not a latency promise">
