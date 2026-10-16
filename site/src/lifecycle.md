@@ -1114,8 +1114,7 @@ crash costs more, as covered on the [SnapStart page](./java-snapstart#after-a-cr
   mostly reflects the most common host, some of the P90 spread comes from slower hosts, and a rerun
   on a different mix can move both. The [appendix](./appendix#host-cpus) lists the mix behind the
   numbers on this site, for runs that recorded it. The `smithyfull` probe is described on
-  [cold-start tuning](./tuning), under "How these numbers were measured"; the probe code is under
-  `oneoff/rust-sdk-tuning`.
+  [cold-start tuning](./tuning), under "How these numbers were measured".
 - **For a handler where cold start matters below ~1.8 GB.** Setup work runs faster at init
   than on the first request (for a lazy SDK, that can require a small real call, not just
   constructing a client), and a higher memory tier runs the phases on comparable CPU. Neither
