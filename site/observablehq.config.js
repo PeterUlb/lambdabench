@@ -53,6 +53,8 @@ const DESCRIPTIONS = {
     "How much does AWS Lambda SnapStart cut Java cold starts? Plain JVM vs SnapStart restore latency measured across memory sizes and CPU architectures.",
   "/tuning":
     "Measured AWS Lambda cold-start levers and their trade-offs, by runtime: init placement and code loading for all runtimes; RNG seeding, the jitter-entropy flag, root-certificate loading, rustls on ring, reading the executable at init, link order, and opt-level for Rust; SnapStart priming for Java; and Go's lazy SDK setup and certificate directory scan.",
+  "/web-functions":
+    "AWS Lambda Web Functions measured against Event Functions: cold starts, warm latency, learned per-environment concurrency, CPU-bound handlers, scale-down, cost, and a Node Web Function vs a Rust Event Function.",
   "/appendix":
     "AWS Lambda benchmark data appendix: cold vs warm latency distributions and full percentiles (P50/P90/P99/P99.9) per language, scenario, and memory tier, with per-cell sample counts.",
 };
@@ -180,6 +182,7 @@ export default {
     { name: "Rust", path: "/rust" },
     { name: "Java SnapStart", path: "/java-snapstart" },
     { name: "Tuning", path: "/tuning" },
+    { name: "Web Functions", path: "/web-functions" },
     { name: "Appendix", path: "/appendix" },
   ],
   // Global footer, two rows: a quiet fine-print disclaimer line, then a brighter
