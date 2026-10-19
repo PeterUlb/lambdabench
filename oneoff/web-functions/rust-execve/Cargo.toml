@@ -1,0 +1,33 @@
+[package]
+name = "oneoff-webfn-rust-execve"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# An axum server that a Web Function's Node process `execve`s into, either from the entry module
+# (after AWS's wrapper ran) or from a NODE_OPTIONS preload (before it). Serves the `oneclient`
+# scenario: one DynamoDB client built at startup, one GetItem per request. Standalone, outside the
+# repository's workspace, so it does not touch the benchmark's lockfile.
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aws-config = "1"
+aws-sdk-dynamodb = "1"
+
+[workspace]
+
+# Same as the benchmark's [profile.lambda] (repository Cargo.toml).
+[profile.lambda]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+panic = "abort"

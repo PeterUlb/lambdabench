@@ -1,0 +1,17 @@
+{
+  "name": "oneoff-web-functions-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild index.mjs --bundle --platform=node --target=node24 --format=esm --log-level=warning --outfile=dist/index.mjs --banner:js=\"import { createRequire as __cr } from 'module';const require = __cr(import.meta.url);\""
+  },
+  "dependencies": {
+    "@aws-crypto/sha256-js": "^5",
+    "@aws-sdk/client-lambda": "^3",
+    "@aws-sdk/client-s3": "^3",
+    "@smithy/signature-v4": "^5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25"
+  }
+}
