@@ -13,7 +13,7 @@ benchmark's own handlers, timed from an in-region client.
 | `server/background.mjs`   | Background-work probe, loaded on `/bg/start`: timers, a worker thread, a child process, network calls                                                                                                            |
 | `client/`                 | The in-region client, an Event Function that times requests (`seq`, `burst`, `load`) and forced Event Function cold starts (`event-invoke`, `event-url`)                                                         |
 | `resources.sh`            | `up` / `down`: IAM role, S3 bucket, DynamoDB table, client; `down` also deletes every probe function                                                                                                             |
-| `web.sh`                  | Create a Web Function from a scenario, add endpoints, and create revisions (each starts fresh environments)                                                                                                      |
+| `web.sh`                  | Create a Web Function from a scenario, add endpoints, and create revisions of the same or changed code (each starts fresh environments)                                                                          |
 | `event.sh`                | Create an Event Function baseline (Node bundle or Rust zip) with a Function URL                                                                                                                                  |
 | `run.sh`                  | One subcommand per probe; results go to `.tmp/oneoff-web-functions/results/`                                                                                                                                     |
 | `analyze.py`              | Summaries of those results and of the Web Functions' platform logs                                                                                                                                               |
@@ -84,6 +84,15 @@ python3 -I analyze.py warm web-noauth web-iam furl invoke-notail invoke-tail
 ./run.sh burst newendpoint64 "$(U load-e1)/sleep?ms=1000" 64
 #   wait ~7 min without traffic to `load`, then:
 ./run.sh burst learned-fromzero64 "$(U load)/sleep?ms=1000" 64
+
+# Learning across code changes: a fresh function, learned, then a same-code revision, a
+# comment-only code change, and (after 15 min idle) /sleep made CPU-bound with 100 ms per request
+./web.sh create rc hello && ./run.sh burst rc-new64 "$(U rc)/sleep?ms=1000" 64
+./run.sh load rc-learn "$(U rc)/sleep?ms=200" 40 240
+./web.sh revise rc && sleep 30 && ./run.sh burst rc-learned64 "$(U rc)/sleep?ms=1000" 64
+./web.sh recode rc && sleep 30 && ./run.sh burst rc-recode64 "$(U rc)/sleep?ms=1000" 64
+sleep 900; ./web.sh recode rc 64 100 && sleep 30 && ./run.sh burst rc-cpu64 "$(U rc)/sleep?ms=1000" 64
+for l in rc-new64 rc-learned64 rc-recode64 rc-cpu64; do python3 -I analyze.py burst $l; done
 
 # CPU-bound handlers
 ./run.sh load cpu-default "$(U load)/cpu?ms=50" 40 180

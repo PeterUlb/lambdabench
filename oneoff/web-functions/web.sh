@@ -7,6 +7,10 @@
 #   web.sh revise <name> [maxConcurrency]
 #       create a new revision of the same code (fresh environments: forces a cold start) and wait
 #       until the endpoint routes to it. Prints the elapsed time on stderr.
+#   web.sh recode <name> [maxConcurrency] [sleepCpuMs]
+#       like revise, but with changed code: appends a comment to the package's index.mjs (and, with
+#       sleepCpuMs, makes /sleep burn that much CPU first), uploads it as a new object version, and
+#       creates the revision from that.
 #   web.sh endpoint <name> <endpoint> <ApplicationManaged|IamAuth>
 #       add another HomeRegion endpoint (its URL is saved as <name>-<endpoint>.url).
 source "$(dirname "$0")/common.sh"
@@ -63,6 +67,16 @@ revise() {
   echo "$rid"
 }
 
+recode() {
+  local name="$1" mc="${2:-64}" cpu="${3:-}" pkg="$OUT/build/web-$1" key
+  read -r key _ <"$OUT/$name.code"
+  [ -n "$cpu" ] && sed -i "s|^      case \"/sleep\":\$|&\n        busy($cpu);|" "$pkg/index.mjs"
+  echo "// recode $(date +%s%N)" >>"$pkg/index.mjs"
+  rm -f "$pkg.zip" && (cd "$pkg" && zip -qr "$pkg.zip" .)
+  echo "$key $(aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$pkg.zip" --query VersionId --output text)" >"$OUT/$name.code"
+  revise "$name" "$mc"
+}
+
 endpoint() {
   local name="$1" ep="$2" auth="$3" fn="$PREFIX-$1" dom
   dom=$(aws lambda-web create-web-function-endpoint --function-name "$fn" --endpoint-name "$ep" \
@@ -73,4 +87,4 @@ endpoint() {
 }
 
 cmd="${1:-}"; shift || true
-case "$cmd" in create | revise | endpoint) "$cmd" "$@" ;; *) sed -n '2,13p' "$0" >&2; exit 2 ;; esac
+case "$cmd" in create | revise | recode | endpoint) "$cmd" "$@" ;; *) sed -n '2,15p' "$0" >&2; exit 2 ;; esac
