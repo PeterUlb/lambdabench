@@ -214,8 +214,12 @@ probes the limit started low and was learned per endpoint:
 With 40 clients looping on 200 ms requests against a new function, the endpoint first ran 29
 environments at ~2 requests each, then 4 at ~10 after ~45 s, and 2 at ~20 from ~100 s on.
 
-The learned limit survived new revisions (with unchanged code) and was still in place after 33
+The learned limit survived new revisions, including code changes, and was still in place after 33
 minutes at zero environments, the longest gap tested; hours or days without traffic were not tried.
+On a second function, learned the same way, a burst of 64 ran on 1 environment after a
+comment-only code change, and again after 15 minutes idle and a change that made each request burn
+100 ms of CPU. In that last burst the 64 requests took p50 4.8 s and up to 7.9 s, against ~1.5 s
+before: a release that makes the handler heavier starts at the limit learned from the old code.
 Until an endpoint has learned, a burst starts about one environment per two requests (32 for 64),
 much closer to an Event Function's one per request than to the learned 64.
 
