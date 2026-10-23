@@ -47,15 +47,28 @@ from the snapshot. CloudWatch shows the same thing from the platform side: a hea
 start reports a [`Restore Duration`](https://docs.aws.amazon.com/lambda/latest/dg/snapstart-monitoring.html)
 (a restore, no `Init Duration`, since SnapStart runs init at version-create), whereas each post-crash
 recovery emitted an `INIT_REPORT` (the full-init marker) instead, with an Init duration in the
-range of plain JVM init, not the smaller restore marker.
+range of plain JVM init, not the smaller restore marker. A re-test in 2026-10 (Java 21, a static
+initializer that slept 8 s in the recovery, after a timeout and after a process exit) did not see
+that marker for a recovery that succeeded: no `INIT_START`, no `INIT_REPORT` and no `RESTORE_REPORT`, only a `START`
+line delayed by the init and a changed id. Only a recovery that ran out of time wrote one
+(`INIT_REPORT … Phase: invoke Status: timeout`). The full init happened either way, but
+in the re-test CloudWatch marked it only when it failed.
 
 That `INIT_REPORT` is also where SnapStart's recovery is _more visible_ than a plain function's: a
 plain suppressed init emits no `INIT_REPORT` and hides its cost inside the next invocation's
 `Duration` (see the [lifecycle page](./lifecycle#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)),
-whereas SnapStart always writes an explicit `INIT_REPORT` when it runs a full init. As with the
+whereas SnapStart wrote an explicit `INIT_REPORT` for its full init in the first probes (not in the
+2026-10 re-test above). As with the
 general suppressed-init case, an _ordinary_ handler exception did not trigger this: the process
 survived and the next invocation was a normal warm one. It is specifically the process-ending
 failures that drop the function onto the full-init recovery path.
+
+That full init also runs under the same time limit as any suppressed init, not the 15 minutes
+SnapStart allows at publish time: it was cut off at 13 s with a 3-second timeout and at 30 s with a
+30-second one (see [how much time a re-init gets](./lifecycle#how-much-time-a-re-init-gets)). Since
+the publish-time init may run far longer, a SnapStart function whose init does not fit that window
+can serve normally from its snapshot and then fail every invoke after its first crash (inferred
+from the two limits; a long publish-time init was not tested).
 
 The consequence is worse than in the general suppressed-init case. On a plain function a crash
 re-runs the init a cold start was already paying. On SnapStart a crash replaces a restore

@@ -7,7 +7,7 @@ toc: true
 
 Settings and code changes that shorten Lambda cold starts, each backed by a measurement from the benchmark or from a dated one-off probe. The effect depends on memory tier, architecture, and handler, so test any change against your own function before relying on it.
 
-Some levers remove work. Others only move it into the Init phase, which shortens an on-demand cold start only below about 1.8 GB, where Init gets more CPU than the handler; at larger sizes the work costs about the same in either phase. That extra CPU is [undocumented behavior](./lifecycle#setup-is-cheaper-at-init-than-in-the-handler) that AWS can change. Environments initialized before any request arrives (provisioned concurrency, SnapStart, Lambda's proactive initialization) take init work off the request path at any size. The table marks each lever as "Removes work" or "Moves to Init".
+Some levers remove work. Others only move it into the Init phase, which shortens an on-demand cold start only below about 1.8 GB, where Init gets more CPU than the handler; at larger sizes the work costs about the same in either phase. That extra CPU is [undocumented behavior](./lifecycle#setup-is-cheaper-at-init-than-in-the-handler) that AWS can change. Environments initialized before any request arrives (provisioned concurrency, SnapStart, Lambda's proactive initialization) take init work off the request path at any size. A provisioned-concurrency init did not get the extra CPU, though: at 128 MB it ran at the tier's share, ~17x slower than the same init on demand ([only the first ~10 seconds of an init are boosted](./lifecycle#only-the-first-10-seconds-of-an-init-are-boosted)). The table marks each lever as "Removes work" or "Moves to Init".
 
 <div class="tldr">
 <div class="tldr-label">At a glance</div>
@@ -216,7 +216,7 @@ Init grew by ~18 ms (one client) to ~36 ms (three), and the first request droppe
 - **Connections are per host.** A call to a different service (for example `sts:GetCallerIdentity`, which needs no IAM permission) does not warm the connection your handler uses.
 - **It adds a round trip.** With enough CPU, opening the connection costs about the same in Init as in the handler, so one call at init only adds its own request's round trip. Several calls come out ahead only because they overlap.
 - **The connection can go stale.** With provisioned concurrency or proactive initialization, an environment can sit idle long after init, and the first request may reconnect or retry anyway.
-- **Startup depends on the service.** If the call fails or is slow, init fails (within Init's 10 s limit) for every cold start, including requests that never use that service. Ignoring the call's result, as above, keeps init from failing, but init still waits for the call.
+- **Startup depends on the service.** If the call fails or is slow, init fails for every cold start, including requests that never use that service. If it pushes init past 10 s, Lambda runs Init again inside the first invoke, so the caller waits for both attempts ([init over 10 s is paid twice](./lifecycle#an-init-over-10-seconds-runs-twice)). Ignoring the call's result, as above, keeps init from failing, but init still waits for the call.
 - **Bursts of cold starts mean bursts of calls**, which count against the service's rate limits and any per-request charges.
 
 </div>

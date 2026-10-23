@@ -19,17 +19,18 @@ from 2026-10, shortly after launch; Lambda's scaling behavior in particular may 
 <div class="tldr">
 <div class="tldr-label">At a glance</div>
 
-| Question                                                              | Measured answer                                                                                                                     |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [Cold start](#cold-starts)                                            | Slower than an Event Function: `hello` ~380 ms vs ~225-240 ms caller wait. Most of the extra time passes before the app's code runs |
-| [Warm request](#warm-requests)                                        | Faster: ~4 ms vs ~11-14 ms caller wait                                                                                              |
-| [Cold starts per burst](#concurrency)                                 | Far fewer once the endpoint has learned the handler: 1,000 simultaneous requests started 16 environments                            |
-| [A new endpoint](#concurrency-is-learned-per-endpoint)                | Starts at ~2 requests per environment and learns over minutes of traffic                                                            |
-| [CPU-bound handlers](#cpu-bound-handlers)                             | One Node event loop per environment; at the default concurrency, requests queue behind it                                           |
-| [Idle environments](#scale-down)                                      | Reclaimed ~5.5-7 min after their last request, and billed for memory until then                                                     |
-| [Background work](#background-work-between-requests)                  | Timers, threads and child processes keep running between requests, billed as CPU, until the environment is reclaimed                |
-| [vs a Rust Event Function](#node-web-function-vs-rust-event-function) | `smithy`: Rust cold ~160-175 ms vs ~460-480 ms; Node Web warm ~4 ms vs ~13 ms                                                       |
-| [Rust via `execve`](#rust-on-a-web-function-via-execve)               | `oneclient`: ~390 ms cold from the entry module, ~314 ms from a preload, vs ~441 ms for Node and ~220 ms for a Rust Event Function  |
+| Question                                                              | Measured answer                                                                                                                                                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Cold start](#cold-starts)                                            | Slower than an Event Function: `hello` ~380 ms vs ~225-240 ms caller wait. Most of the extra time passes before the app's code runs                                                   |
+| [Warm request](#warm-requests)                                        | Faster: ~4 ms vs ~11-14 ms caller wait                                                                                                                                                |
+| [Cold starts per burst](#concurrency)                                 | Far fewer once the endpoint has learned the handler: 1,000 simultaneous requests started 16 environments                                                                              |
+| [A new endpoint](#concurrency-is-learned-per-endpoint)                | Starts at ~2 requests per environment and learns over minutes of traffic                                                                                                              |
+| [CPU-bound handlers](#cpu-bound-handlers)                             | One Node event loop per environment; at the default concurrency, requests queue behind it                                                                                             |
+| [Idle environments](#scale-down)                                      | Reclaimed ~5.5-7 min after their last request, and billed for memory until then                                                                                                       |
+| [Background work](#background-work-between-requests)                  | Timers, threads and child processes keep running between requests, billed as CPU, until the environment is reclaimed                                                                  |
+| [Slow startup](#slow-startup)                                         | Startup gets ~9-10 s, and a failed one is not retried. Requests wait for a starting environment, and that wait does not count against the timeout; work deferred past `listen()` does |
+| [vs a Rust Event Function](#node-web-function-vs-rust-event-function) | `smithy`: Rust cold ~160-175 ms vs ~460-480 ms; Node Web warm ~4 ms vs ~13 ms                                                                                                         |
+| [Rust via `execve`](#rust-on-a-web-function-via-execve)               | `oneclient`: ~390 ms cold from the entry module, ~314 ms from a preload, vs ~441 ms for Node and ~220 ms for a Rust Event Function                                                    |
 
 </div>
 
@@ -65,7 +66,8 @@ numbers](./lifecycle#reading-the-cold-numbers)). The kernel identifies itself as
 and one `node` process running AWS's wrapper `/var/runtime/index.js`. The wrapper imports the entry
 file (`index.js` by default, or the file named in `AWS_LAMBDA_NODEJS_ENTRYPOINT`), then tries every
 5 ms to connect to the address in `AWS_LAMBDA_HTTP_ENDPOINT` (`0.0.0.0:3000`), and reports the
-environment ready once a connection succeeds; the documented limit for listening is 10 s.
+environment ready once a connection succeeds; the documented limit for listening is 10 s, but in
+practice the wrapper allowed 9 s (see [slow startup](#slow-startup)).
 
 Requests do not reach the server directly. Lambda terminates TLS and forwards plain HTTP/1.1, and
 the server sees the connection coming from `169.254.100.1`, not from the client. That link-local
@@ -153,6 +155,85 @@ download. Adding a 50 MB incompressible file to the `hello` package raised `init
 caller waits above are the fair comparison. `initReport` recorded ~190 ms of CPU for an empty
 `hello`; the `EnvironmentCPUTime` metric includes init (documented), and Web Functions bill CPU
 time, but no bill was checked against these numbers.
+
+## Slow startup
+
+A probe server delayed its own startup in two ways: with a top-level `await` in the entry module,
+so the wrapper's import of it did not finish, and with a timer before `listen()`, after the import
+had finished. Each case was a new revision of the `hello` server, with sequential requests from the
+in-region client (2026-10, a few requests per case).
+
+### Startup limits
+
+| Limit                                     | Cutoff                                                      | Caller gets                                |
+| ----------------------------------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| Entry module import                       | 9 s (`customer code did not finish loading within 9000ms`)  | HTTP 502, `Runtime.TimeoutImportError`     |
+| `listen()`, counted from the import's end | 9 s (`nothing was listening on 0.0.0.0:3000 within 9000ms`) | HTTP 502, `Application.TimeoutListenError` |
+| Whole init (`initReport`)                 | ~10 s (failed at 10,060-10,092 ms)                          | HTTP 502, `Runtime.InitTimeout`            |
+
+An 8 s import, an 8.5 s delay before `listen()`, and a 5 s import followed by `listen()` 4.5 s
+later (`initReport` 9.7 s) all succeeded. Two 8.5 s steps, whose sum is over 17 s, failed at the
+10 s limit. The documentation names a 10 s limit for listening and does not list
+`Runtime.TimeoutImportError`. So startup work at the top level of the entry module gets 9 s, and
+all of startup gets about 10 s on the platform's clock, which also counts time before the Node
+process starts, most likely the code download (see
+[platform-reported init](#platform-reported-init-is-not-comparable-to-init-duration)).
+
+### A failed startup is not retried
+
+Each request that met a too-slow startup waited ~9.3-10.2 s and got a 502. Lambda shut that
+environment down, and the next request started a new one, which failed the same way. Unlike an
+Event Function, whose init over 10 s
+[runs a second time inside the first invoke](./lifecycle#an-init-over-10-seconds-runs-twice),
+a Web Function never ran a second startup for the same request, so a slow startup is not paid twice,
+but no request succeeds until a fixed revision is deployed. Each failed startup still used CPU, which
+Web Functions bill: ~190 ms when the import was held, and ~365 ms when only `listen()` was late,
+probably because the wrapper tries to connect every 5 ms the whole time. After a `Runtime.InitTimeout` the
+process was not stopped at once: it kept running, called `listen()` ~7 s later and then failed to
+report readiness to the runtime API.
+
+### Waiting for startup is not part of the request timeout
+
+With `timeoutSeconds` at 3 (its minimum) and `listen()` 8 s after the import, the first request
+waited 8.4 s and succeeded. The timeout started once the request reached the server.
+
+### A crash replaces the environment
+
+A request that ended the process (`process.exit(1)`) got HTTP 503 with
+`Runtime.OriginRequestError` within ~40 ms. Lambda shut that environment down instead of starting
+the server again in it, and the next request started a new environment with the full startup budget
+(8 s startup: 8.4 s wait, then 200). An Event Function's
+[re-init loop](./lifecycle#how-much-time-a-re-init-gets), where every
+invoke re-runs a startup that cannot fit in its timeout, did not occur.
+
+### Requests queue on a starting environment
+
+With a 5 s startup and 1 s requests, every burst below started from zero environments, after
+Lambda had reclaimed all of them, so no warm or spare environment could take a request:
+
+| Burst                                                          | Result                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Learned endpoint, 64 simultaneous requests                     | **All 64 on 1 environment**, each waited ~6.5 s (startup + request) |
+| Learned endpoint, 1 request, then 63 more 2 s into its startup | **All 64 on that 1 environment**; the 63 waited ~4.4 s              |
+| Learned endpoint, 128 simultaneous requests                    | 2 environments × 64, each request ~6.5 s                            |
+| New endpoint, 64 simultaneous requests                         | 32 environments × 2, each request ~6.4 s                            |
+
+Requests that arrive while an environment starts wait for it, up to the endpoint's per-environment
+limit, and are not throttled (documented). They also stayed with the environment they were queued
+on. Lambda also started spare environments, in the simultaneous bursts one that finished starting
+within ~50 ms of the busy one, and none of them served a queued request. On a learned endpoint, then, a slow startup
+delays every request in a burst of up to the limit, not only the first, and a burst does not spread
+out to finish sooner. In an earlier run, a new endpoint added the same way ran its first burst of 64
+on one environment instead of 32 × 2; that run is not explained.
+
+### Deferring startup work past `listen()`
+
+AWS recommends listening first and letting requests await the remaining startup work. A server that
+listened at once and made every request wait 12 s for a startup promise, longer than any limit
+above, worked. A burst of 64 from zero ran on one environment, and every request succeeded after
+~13.4 s. The wait then counts against `timeoutSeconds` instead of the ~9-10 s startup limit,
+unlike the wait before `listen()`: with `timeoutSeconds` at 5, all 64 requests got HTTP 504
+(`Runtime.RequestTimeout`) after ~5.5 s.
 
 ## Warm requests
 

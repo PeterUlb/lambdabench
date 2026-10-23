@@ -28,7 +28,7 @@ the page marks which statements AWS documents and which are observed behavior.
 - **For a `.zip`, the invisible download+start cost grows with package size:** a flat floor of ~${Math.round(dlFloor)} ms up to a few MB, then a near-linear climb (very roughly 3-8 ms/MB) reaching of order a second and up near Lambda's size limit. A container image inverts this, moving the size cost into the _reported_ `Init Duration` instead. [Zip vs container image →](#zip-vs-container-image-where-the-size-cost-lands)
 - **The Init phase appears to run on boosted, roughly full-vCPU CPU; the handler runs at the configured tier's fraction.** Below ~1.8 GB, setup done _at init_ is effectively subsidized. This is observed, not a documented contract, so [don't build on it →](#init-runs-on-boosted-cpu).
 - **Where two runtimes do comparable work at comparable speed, _which phase_ they run it in can dominate their cold gap.** Rust and Go (both fast, compiled, near-equal at the raw setup) are the clean example: Rust front-loads SDK/TLS setup into the boosted init while Go defers the identical work to the metered first request, so their several-fold low-memory gap narrows to ~1.3x once both run it at the same CPU (a dated off-matrix probe, not this site's benchmark data; see below). This is a specific eager-vs-lazy effect, not a general rule: a gap rooted in the execution model itself (e.g. JVM startup vs a native binary) persists in any phase. [Same work, different phase →](#rust-vs-go-same-work-different-phase)
-- **A crash or timeout re-runs Init, invisibly, on the _next_ invocation.** If a failure ends the runtime process (OOM, timeout, process exit on every runtime tested), the following invocation pays a _suppressed init_ whose duration hides inside its reported `Duration`; a failure the runtime catches (an ordinary handler exception) stays warm. The mapping is runtime-specific at the edges: a Go panic re-inits while a Rust one stays warm, and a Node stack overflow stays warm while it re-inits elsewhere. [When a crash or timeout re-runs Init →](#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)
+- **A crash or timeout re-runs Init, invisibly, on the _next_ invocation.** If a failure ends the runtime process (OOM, timeout, process exit on every runtime tested), the following invocation pays a _suppressed init_ whose duration hides inside its reported `Duration`; a failure the runtime catches (an ordinary handler exception) stays warm. The mapping is runtime-specific at the edges: a Go panic re-inits while a Rust one stays warm, and a Node stack overflow stays warm while it re-inits elsewhere. That re-init has its own limit, the function timeout plus up to 10 s (at most 20 s, or the timeout if longer), and an init longer than that leaves the environment failing every invoke; with provisioned concurrency or SnapStart that limit is far below what their first init allows. [When a crash or timeout re-runs Init →](#when-a-crash-or-timeout-re-runs-init-the-suppressed-init)
 
 </div>
 
@@ -888,7 +888,9 @@ runs _at_ it.
 The boost is not in the official
 [execution-environment docs](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-context.html);
 the primary source is a 2019 conference talk, and the "up to 10 seconds" it cites lines up
-with the documented 10-second Init limit. It has held consistently in measurement, but AWS
+with the documented 10-second Init limit. A 2026-10 probe measured that limit directly: an init
+that ran longer dropped to the configured tier's speed after ~10 s (see
+[only the first ~10 seconds of an init are boosted](#only-the-first-10-seconds-of-an-init-are-boosted)). It has held consistently in measurement, but AWS
 does not commit to it, so **a system should not depend on it**. What follows is a
 way to read the measured numbers, not advice to build around an undocumented mechanism.
 
@@ -1036,20 +1038,24 @@ diverge from the rest:
   `RecursionError` and stays warm; only an overflow that defeats the interpreter's recursion guard
   (C-level recursion, or a recursion limit raised past the real stack) aborts the process.
 
-<div class="warning" label="The re-init is boosted, but its budget differs from a cold start's">
+<div class="warning" label="A re-init has its own time limit, and a long init can loop">
 
 A first cold start's Init phase gets its own budget, separate from the function timeout (10 seconds
 for a standard function; for provisioned-concurrency and SnapStart functions that 10-second limit
 does not apply at all, and init may run up to 15 minutes, the limit being 130 seconds or the
-configured function timeout, whichever is _higher_). Verified off-matrix: a function with an
-**8-second init and a 3-second timeout** still cold-started successfully, its first invoke
-reporting `Init Duration: ~8.1 s` with no timeout.
-The suppressed init that follows a crash is different in _where_ it is accounted, not in _speed_:
-even though it happens on the invoke path and bills as `Duration`, it still gets the
-[Init-phase CPU boost](#init-runs-on-boosted-cpu) (the same CPU workload
-re-run in a post-crash init finished within a few percent of a normal cold init, and roughly an order
-of magnitude faster, ~13-16x across runs, than the throttled handler at 128 MB), so it runs at the
-function's normal cold `Init Duration`. In both cases, a lighter init is what helps.
+configured function timeout, whichever is _higher_). **A suppressed init gets a different limit:**
+it runs inside the invoke and was cut off at **max(timeout, min(timeout + 10 s, 20 s))** after the
+invoke started. On a standard function that is at least as long as a cold start allows (13 s
+against 10 s at a 3-second timeout); with provisioned concurrency or SnapStart it is far shorter
+than their first init. Either way an init that does not fit leaves the environment failing every
+invoke, a re-init loop that lasted from minutes to over half an hour. That held on-demand, with
+provisioned concurrency and with SnapStart, after a timeout, a process exit or an OOM, and for
+slow extensions as for a slow runtime. The handler then gets only what is left of the window, at
+most the timeout. Make the timeout at least init plus the slowest invoke, keep init short, and do
+not count on the provisioned-concurrency or SnapStart init budget: it covers only the first init. The
+re-init is not slower than an on-demand cold start's: it runs on boosted CPU too, for its first ~10
+seconds ([only the first ~10 seconds of an init are boosted](#only-the-first-10-seconds-of-an-init-are-boosted)).
+Measurements: [how much time a re-init gets](#how-much-time-a-re-init-gets).
 
 Catching downstream errors _inside_ the handler only helps for the recoverable-error class
 above; it cannot save a failure that ends the process, such as an actual OOM or a hard timeout, both
@@ -1066,6 +1072,113 @@ like a merely-slow invoke. Unlike a normal cold start, no `REPORT` field marks i
 `INIT_START`/`INIT_REPORT` events with `phase=invoke` for a suppressed init, so it is observable, but
 only with that instrumentation in place.) For SnapStart the same
 crash costs more, as covered on the [SnapStart page](./java-snapstart#after-a-crash-or-timeout-snap-start-runs-a-full-init): the recovery is a full JVM init, **not** a snapshot restore, so the crash silently drops the function off the SnapStart fast path.
+
+### How much time a re-init gets
+
+These come from off-matrix probes (2026-10, `eu-central-1`, arm64) whose init slept a set time
+that could be longer after a crash than on the first cold start, so the first cold start succeeded
+and the re-init could be any length. Unless a row says otherwise, the function was Node (`nodejs24.x`) at 1,024 MB
+and the crash was a timeout. The re-init was cut off at a fixed time after the invoke started:
+
+| Timeout | Re-init cutoff | Re-init that succeeded | Re-init that failed, on every invoke after                                |
+| ------- | -------------- | ---------------------- | ------------------------------------------------------------------------- |
+| 3 s     | 13 s           | 8 s and 12 s           | 14 s: `INIT_REPORT Init Duration: 13001 ms Phase: invoke Status: timeout` |
+| 10 s    | 20 s           |                        | 25 s with provisioned concurrency, Node and Rust: `20000 ms`              |
+| 15 s    | 20 s           | 12 s                   | 22 s: `20000 ms`                                                          |
+| 20 s    | 20 s           |                        | 25 s and 32 s: `20000 ms`                                                 |
+| 30 s    | 30 s           | 25 s                   | 32 s: `30001 ms`                                                          |
+
+That is max(timeout, min(timeout + 10 s, 20 s)): up to a 10-second timeout the re-init gets ten
+extra seconds, between 10 and 20 seconds it gets whatever is left up to 20 (5 extra at a 15-second
+timeout), and from 20 seconds up it gets none. The same cutoffs came out with Rust
+(`provided.al2023`) at 3 and 10 s; after a process exit or an OOM instead of a timeout (13 s at a
+3-second timeout); for an external extension that was slow to start, with a fast runtime (13 s at
+3 s); and for SnapStart (Java 21), whose recovery after a crash is a full init, not a restore (13 s
+at a 3-second timeout, 30 s at 30 s). SnapStart's first init, at publish time, may run up to 15
+minutes, so a SnapStart function can publish and serve with an init far beyond this window and
+only fail at its first crash; with provisioned concurrency the same holds for its 130-second init.
+
+A [2024 post](https://aaronstuyvenberg.com/posts/lambda-timeout-doom-loop) that calls this loop a
+"doom loop", on an ordinary on-demand function, had a ~3-second init fail against a 3-second timeout. The probe here
+gave the re-init an extra 10 seconds at that timeout, so the cutoff may have changed since then.
+
+### What the handler gets after a re-init
+
+The handler does not get a fresh timeout. In the same probes, with the handler waiting after the
+re-init, it got the smaller of the timeout and what was left until the cutoff above, and
+`context.getRemainingTimeInMillis()` at the handler's start reported that real time:
+
+| Timeout | Re-init | Remaining at the handler's start | Handler that succeeded | Handler that timed out |
+| ------- | ------- | -------------------------------- | ---------------------- | ---------------------- |
+| 3 s     | 8 s     | 2,999 ms (a full timeout)        | 2 s                    | 4 s and 6 s            |
+| 3 s     | 12 s    | 913 ms (to the 13 s cutoff)      | 0.3 s                  | 1.5 s and 2 s          |
+| 15 s    | 12 s    | 7,930 ms (to the 20 s cutoff)    | 7 s                    | 9 s                    |
+| 30 s    | 25 s    | 4,886 ms (what was left of 30 s) | 4 s                    | 8 s                    |
+
+`Duration` and `Billed Duration` in the `REPORT` line never exceeded the timeout, even when re-init
+and handler together ran longer: a 12-second re-init plus a 7-second handler at a 15-second timeout
+reported `Duration: 15000.00 ms`, and an 8-second re-init plus a 2-second handler at 3 seconds
+reported `3000.00 ms`. Whether the bill counts the rest was not checked.
+
+### An init over 10 seconds runs twice
+
+On a standard function, a cold start's init that passes 10 seconds is stopped
+(`INIT_REPORT … Phase: init Status: timeout`) and run again from the start inside the first
+invoke, where only the function timeout bounds it. A 12-second init with a 30-second timeout made
+the caller wait ~23 s, the `REPORT` showing only the second run (`Duration: 12094 ms`), and the same
+held for a 12-second extension. With a 10-second timeout the same init failed, the retry being
+limited to the timeout alone, and the next invoke ran it again within the 20-second window above and
+succeeded. The handler gets what the retry leaves of the timeout: after a 39-second retry with a
+300-second timeout, `getRemainingTimeInMillis()` reported 260,833 ms.
+
+### Only the first ~10 seconds of an init are boosted
+
+A probe at 128 MB ran a fixed CPU loop of ~12 s at full speed in its init, longer than 10 s, and
+recorded its speed every second. Both the retried cold start and a post-crash re-init ran at
+~720-740 million iterations per second for ~10 s and then at ~44 million, the same as the loop in
+the handler (1/16), until they finished:
+
+```
+retried cold start: 716,726,709,741,741,742,742,742,742,694,44,44,47,48,44,44,…  (39.1 s in total)
+post-crash re-init: 721,725,706,733,738,737,737,737,738,614,44,44,44,43,46,49,…  (41.7 s in total)
+```
+
+That matches the "up to 10 seconds" of the [boost](#init-runs-on-boosted-cpu), and it applies to
+each init separately: the retry got its own 10 seconds after the first attempt had used 10. A
+shorter re-init stays boosted throughout, even though it runs on the invoke path and bills as
+`Duration`: in an earlier probe the same CPU workload in a post-crash init finished within a few
+percent of a normal cold init, ~13-16x faster than the throttled handler at 128 MB. At small
+memory sizes an init that runs past 10 seconds therefore slows down sharply, here from ~12 s of
+work to ~39 s.
+
+A provisioned-concurrency init got no boost at all. The same version at 128 MB ran a ~0.84-second
+init in 0.84 s on demand, but in 14.7 s when Lambda provisioned it, at ~44 million iterations per
+second from its third second on. With the ~12-second workload, provisioning failed: each init was
+stopped at the 130-second limit (`Init Duration: 129999 ms`) and the configuration went to `FAILED`
+with `FUNCTION_ERROR_INIT_FAILURE`, for an init that finishes on demand in ~40 s. On-demand
+environments of a version with provisioned concurrency (spillover) still ran their init boosted. So
+a provisioned-concurrency init takes about as long as the same work in the handler. Whether its
+re-init after a crash is boosted was not measured.
+
+### How long a re-init loop lasts
+
+Runs with a 3-second timeout and a 14-second re-init, so the re-init could not fit its 13-second
+cutoff, each started by one invoke that timed out. Callers invoked again as soon as their last
+invoke returned, except in the single-caller run:
+
+| Traffic                                                           | Result                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8 callers, 4 runs (one of them 12 minutes long, three 20 minutes) | One environment looped: ~1% of requests failed, each holding its caller ~13.7 s. In one run it stopped after ~9 minutes; in the other three it was still looping when the run ended, 19 minutes after the first timeout |
+| 2 callers, 20 minutes                                             | ~8% failed (83 of 1,092), still looping at the end                                                                                                                                                                      |
+| 1 caller, an invoke every ~44 s for 30 minutes, then 12 in a row  | Every invoke failed: 53 over ~35 minutes                                                                                                                                                                                |
+| The same function after 15 minutes without traffic                | The next invoke started a new environment and succeeded                                                                                                                                                                 |
+
+The stuck environment's log stream showed its timed-out re-inits throughout, so the loop ended
+only when that environment was removed, never by a re-init that started to fit. While traffic kept
+it alive that usually did not happen within 20 minutes; the one early end is not explained. The
+fewer environments a function runs, the larger the share of requests that hits the stuck one, and
+with a single environment it is all of them. After 15 minutes without traffic (one test) the environment
+had been reclaimed and the loop was over.
 
 ## Reading the cold numbers
 
