@@ -13,6 +13,10 @@
 #       creates the revision from that.
 #   web.sh endpoint <name> <endpoint> <ApplicationManaged|IamAuth>
 #       add another HomeRegion endpoint (its URL is saved as <name>-<endpoint>.url).
+#   WEB_INIT_MS=<ms> holds the entry module's import (PROBE_INIT_MS), WEB_LISTEN_MS=<ms> then
+#   delays listen() after it (PROBE_LISTEN_DELAY_MS), WEB_DEFER_MS=<ms> makes every request wait
+#   that long after startup instead (PROBE_DEFER_MS), and WEB_TIMEOUT=<s> sets timeoutSeconds
+#   (default 30), for the revision that create, revise or recode makes.
 source "$(dirname "$0")/common.sh"
 
 revision_config() { # <name> <maxConcurrency>
@@ -20,8 +24,8 @@ revision_config() { # <name> <maxConcurrency>
   read -r key ver <"$OUT/$name.code"
   cat <<J
 {"buildConfig":{"codeConfig":{"s3Object":{"bucket":"$BUCKET","key":"$key","versionId":"$ver"}},"runtimeConfig":{"runtime":"nodejs24.x"}},
- "serviceConfig":{"executionRoleArn":"$ROLE_ARN","maxConcurrencyPerEnvironment":$mc,
-  "environmentVariables":{"AWS_LAMBDA_NODEJS_ENTRYPOINT":"index.mjs","LAMBDABENCH_TABLE":"$TABLE","LAMBDABENCH_KEY":"seed","REVISION_NONCE":"$(date +%s%N)"},
+ "serviceConfig":{"executionRoleArn":"$ROLE_ARN","maxConcurrencyPerEnvironment":$mc,"timeoutSeconds":${WEB_TIMEOUT:-30},
+  "environmentVariables":{"AWS_LAMBDA_NODEJS_ENTRYPOINT":"index.mjs","LAMBDABENCH_TABLE":"$TABLE","LAMBDABENCH_KEY":"seed","REVISION_NONCE":"$(date +%s%N)","PROBE_INIT_MS":"${WEB_INIT_MS:-0}","PROBE_LISTEN_DELAY_MS":"${WEB_LISTEN_MS:-0}","PROBE_DEFER_MS":"${WEB_DEFER_MS:-0}"},
   "telemetryConfig":{"loggingConfig":{"systemLogLevel":"INFO","applicationLogLevel":"INFO"}}}}
 J
 }
@@ -87,4 +91,4 @@ endpoint() {
 }
 
 cmd="${1:-}"; shift || true
-case "$cmd" in create | revise | recode | endpoint) "$cmd" "$@" ;; *) sed -n '2,15p' "$0" >&2; exit 2 ;; esac
+case "$cmd" in create | revise | recode | endpoint) "$cmd" "$@" ;; *) sed -n '2,19p' "$0" >&2; exit 2 ;; esac

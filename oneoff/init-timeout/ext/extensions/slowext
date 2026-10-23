@@ -1,0 +1,3 @@
+#!/bin/sh
+# External extension for the init-timeout probe; the work is in /opt/slowext.mjs.
+exec /var/lang/bin/node /opt/slowext.mjs

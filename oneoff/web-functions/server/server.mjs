@@ -12,6 +12,12 @@
 //   /info         runtime introspection: Node flags, CPU, memory, processes, mounts
 //   /bg/start?spin=1&net=1   start the background-work probe (background.mjs) in this environment
 //   /bg/status    what the background probe has observed so far
+//   /exit         end the process mid-request (exit code 1), without a response
+// PROBE_INIT_MS delays listen() by that many ms with a top-level await, so the entry module's
+// import does not finish either, a stand-in for slow startup work. PROBE_LISTEN_DELAY_MS then
+// delays listen() by a timer, after the import has finished. PROBE_DEFER_MS instead stands in for
+// startup work deferred past listen(), as AWS recommends: every request first waits for a promise
+// that resolves that many ms after the module loaded.
 const T_MODULE = performance.now(); // ms since this node process started (performance.timeOrigin)
 import http from "node:http";
 import { randomUUID } from "node:crypto";
@@ -35,6 +41,8 @@ let maxInflight = 0;
 let firstReqAt = null;
 let listenAt = -1;
 let bg = null; // background.mjs, imported on the first /bg/start
+const DEFER_MS = +process.env.PROBE_DEFER_MS || 0;
+const deferred = new Promise((r) => setTimeout(r, DEFER_MS));
 
 const read = (p) => {
   try {
@@ -83,6 +91,7 @@ const server = http.createServer(async (req, res) => {
   inflight++;
   if (inflight > maxInflight) maxInflight = inflight;
   const seenInflight = inflight;
+  if (DEFER_MS) await deferred;
   const url = new URL(req.url, "http://x");
   let status = 200;
   let body;
@@ -109,6 +118,9 @@ const server = http.createServer(async (req, res) => {
       case "/bg/status":
         body = bg ? bg.status() : { started: false };
         break;
+      case "/exit":
+        console.log({ evt: "exit", bootId: BOOT_ID, reqN });
+        process.exit(1);
       default:
         body = { ok: true };
     }
@@ -150,9 +162,11 @@ server.keepAliveTimeout = 65000;
 // Host CPU generation from the Arm "CPU part" (as lambdabench reads it), after listen().
 const CPU_PARTS = { "0xd0c": "Graviton2", "0xd40": "Graviton3", "0xd4f": "Graviton4" };
 let hostCpu = "unknown";
-server.listen(+port, host, () => {
+const INIT_MS = +process.env.PROBE_INIT_MS || 0;
+if (INIT_MS) await new Promise((r) => setTimeout(r, INIT_MS));
+setTimeout(() => server.listen(+port, host, () => {
   listenAt = performance.now();
   const part = fs.readFileSync("/proc/cpuinfo", "utf8").match(/^CPU part\s*:\s*(\S+)/m)?.[1];
   hostCpu = CPU_PARTS[part] ?? part ?? os.cpus()[0]?.model ?? "unknown";
   console.log({ evt: "listening", bootId: BOOT_ID, moduleStartMs: T_MODULE, listenMs: listenAt });
-});
+}), +process.env.PROBE_LISTEN_DELAY_MS || 0);

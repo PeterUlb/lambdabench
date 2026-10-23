@@ -12,6 +12,7 @@ members = [
     "scenarios/rust/cache",
     "scenarios/rust/cpuinfo",
     "oneoff/rust-sdk-init",
+    "oneoff/init-timeout/rust",
 ]
 # scenarios/rust/smithy and scenarios/rust/smithyfull are intentionally excluded:
 # both depend on a server SDK that only exists after `gradlew` codegen (smithyfull
